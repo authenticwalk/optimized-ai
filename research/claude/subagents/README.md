@@ -31,36 +31,39 @@
 | 07 | [GITHUB RESOURCES](07-GITHUB-RESOURCES.md) | Repository links and community resources | 20 min | 🟢 Reference |
 | 08 | [IMPLEMENTATION EXAMPLES](08-IMPLEMENTATION-EXAMPLES.md) | Code examples and snippets | 30 min | 🟡 Important |
 | 09 | [PROJECT ALIGNMENT](09-PROJECT-ALIGNMENT.md) | Applying research to Optimized AI | 25 min | 🔴 READ SECOND |
+| 10 | [AGENT GRANULARITY & LIMITATIONS](10-AGENT-GRANULARITY-AND-LIMITATIONS.md) | Agent vs Skill decisions, nesting limitations, context pollution | 40 min | 🔴 CRITICAL |
 
-**Total reading time**: ~4.5 hours for complete coverage
+**Total reading time**: ~5 hours for complete coverage
 
 ---
 
 ## Reading Paths
 
-### Path 1: Executive Overview (45 minutes)
+### Path 1: Executive Overview (60 minutes)
 
 For quick understanding:
 
 1. [00-OVERVIEW.md](00-OVERVIEW.md) - Key findings
-2. [09-PROJECT-ALIGNMENT.md](09-PROJECT-ALIGNMENT.md) - Project application
-3. [06-BEST-PRACTICES.md](06-BEST-PRACTICES.md) - Quick reference section
+2. [10-AGENT-GRANULARITY-AND-LIMITATIONS.md](10-AGENT-GRANULARITY-AND-LIMITATIONS.md) - Critical constraints
+3. [09-PROJECT-ALIGNMENT.md](09-PROJECT-ALIGNMENT.md) - Project application
+4. [06-BEST-PRACTICES.md](06-BEST-PRACTICES.md) - Quick reference section
 
-### Path 2: Implementation Focus (2 hours)
+### Path 2: Implementation Focus (2.5 hours)
 
 For developers ready to build:
 
 1. [00-OVERVIEW.md](00-OVERVIEW.md) - Context
-2. [01-SUBAGENTS-DEEP-DIVE.md](01-SUBAGENTS-DEEP-DIVE.md) - How subagents work
-3. [02-AGENT-SKILLS-ARCHITECTURE.md](02-AGENT-SKILLS-ARCHITECTURE.md) - How skills work
-4. [08-IMPLEMENTATION-EXAMPLES.md](08-IMPLEMENTATION-EXAMPLES.md) - Code examples
-5. [06-BEST-PRACTICES.md](06-BEST-PRACTICES.md) - Do's and don'ts
+2. [10-AGENT-GRANULARITY-AND-LIMITATIONS.md](10-AGENT-GRANULARITY-AND-LIMITATIONS.md) - Critical design decisions
+3. [01-SUBAGENTS-DEEP-DIVE.md](01-SUBAGENTS-DEEP-DIVE.md) - How subagents work
+4. [02-AGENT-SKILLS-ARCHITECTURE.md](02-AGENT-SKILLS-ARCHITECTURE.md) - How skills work
+5. [08-IMPLEMENTATION-EXAMPLES.md](08-IMPLEMENTATION-EXAMPLES.md) - Code examples
+6. [06-BEST-PRACTICES.md](06-BEST-PRACTICES.md) - Do's and don'ts
 
-### Path 3: Deep Technical Understanding (4.5 hours)
+### Path 3: Deep Technical Understanding (5 hours)
 
 For comprehensive knowledge:
 
-Read all documents in order (00-09)
+Read all documents in order (00-10)
 
 ### Path 4: Specific Topics
 
@@ -109,6 +112,23 @@ From Anthropic's research:
 ---
 
 ## Critical Insights
+
+### 0. ⚠️ CRITICAL LIMITATION: No Nested Subagents
+
+**Subagents CANNOT call other subagents** - This is a hard constraint that shapes all design decisions.
+
+```
+❌ NOT POSSIBLE:
+Main Agent → Subagent A → Subagent B (BLOCKED)
+
+✅ ONLY VALID:
+Main Agent → Subagent A
+Main Agent → Subagent B
+```
+
+**Implication**: All designs must use flat hierarchy (max 2 levels)
+
+**See**: [10-AGENT-GRANULARITY-AND-LIMITATIONS.md](10-AGENT-GRANULARITY-AND-LIMITATIONS.md) for complete analysis
 
 ### 1. Skills Architecture is Proven
 
@@ -316,9 +336,15 @@ See [07-GITHUB-RESOURCES.md](07-GITHUB-RESOURCES.md)
 - Token usage: 80% of performance variance
 - Output tokens: 4× cost of input
 
+**Critical Constraints**:
+- ⚠️ **No nested subagents** - Flat hierarchy only
+- ⚠️ **Main agent = Air traffic controller** - Never does context-heavy work
+- ⚠️ **Most "agents" should be skills** - Only use agents for isolated, context-heavy work
+
 **Core Patterns**:
 - Progressive disclosure (3-tier)
-- Orchestrator-worker (multi-agent)
+- Orchestrator-worker (flat hierarchy)
+- Map/reduce (subagents explore, main synthesizes)
 - Lightweight summaries (1-2k tokens)
 - Tool filtering (minimal set)
 - Prompt caching (static at top)
