@@ -1,121 +1,25 @@
-# Claude Agents & Subagents Research
+# Claude Subagents Research
 
-**Research Date**: November 3, 2025
-**Purpose**: Comprehensive research on Claude agents, subagents, skills, MCP, and best practices to inform the Optimized AI project
+Comprehensive research on Claude Code subagents, their architecture, and best practices for the Optimized AI project.
 
----
-
-## Quick Start
-
-**New to this research?** Start here:
-
-1. **[00-OVERVIEW.md](00-OVERVIEW.md)** - Executive summary and key findings (15 min read)
-2. **[09-PROJECT-ALIGNMENT.md](09-PROJECT-ALIGNMENT.md)** - How this applies to our project (10 min read)
-3. Dive deeper into specific topics as needed
+**Last Updated**: 2025-11-03
 
 ---
 
-## Document Index
+## What Are Subagents?
 
-### Core Documentation
+**Subagents** are isolated Claude instances that can be spawned by the main agent to handle specialized tasks with fresh context windows.
 
-| # | Document | Description | Time | Priority |
-|---|----------|-------------|------|----------|
-| 00 | [OVERVIEW](00-OVERVIEW.md) | Executive summary, key findings, architecture alignment | 15 min | 🔴 READ FIRST |
-| 01 | [SUBAGENTS DEEP DIVE](01-SUBAGENTS-DEEP-DIVE.md) | Comprehensive guide to Claude subagents | 45 min | 🔴 Essential |
-| 02 | [SKILLS ARCHITECTURE](02-AGENT-SKILLS-ARCHITECTURE.md) | Agent Skills and progressive disclosure | 35 min | 🔴 Essential |
-| 03 | [MODEL CONTEXT PROTOCOL](03-MODEL-CONTEXT-PROTOCOL.md) | MCP specification and implementation | 30 min | 🟡 Important |
-| 04 | [TOKEN OPTIMIZATION](04-TOKEN-OPTIMIZATION.md) | Token efficiency techniques | 25 min | 🔴 Essential |
-| 05 | [ORCHESTRATION PATTERNS](05-ORCHESTRATION-PATTERNS.md) | Multi-agent coordination patterns | 30 min | 🟡 Important |
-| 06 | [BEST PRACTICES](06-BEST-PRACTICES.md) | Comprehensive best practices guide | 35 min | 🔴 Essential |
-| 07 | [GITHUB RESOURCES](07-GITHUB-RESOURCES.md) | Repository links and community resources | 20 min | 🟢 Reference |
-| 08 | [IMPLEMENTATION EXAMPLES](08-IMPLEMENTATION-EXAMPLES.md) | Code examples and snippets | 30 min | 🟡 Important |
-| 09 | [PROJECT ALIGNMENT](09-PROJECT-ALIGNMENT.md) | Applying research to Optimized AI | 25 min | 🔴 READ SECOND |
-| 10 | [AGENT GRANULARITY & LIMITATIONS](10-AGENT-GRANULARITY-AND-LIMITATIONS.md) | Agent vs Skill decisions, nesting limitations, context pollution | 40 min | 🔴 CRITICAL |
+### Key Characteristics
 
-**Total reading time**: ~5 hours for complete coverage
+- **Fresh Context**: Each subagent starts with a clean context window
+- **Specialized Tools**: Can be configured with specific tool subsets
+- **Parallel Execution**: Multiple subagents can run simultaneously
+- **Isolated Results**: Return focused summaries to main agent
 
----
+### ⚠️ Critical Limitation: No Nested Subagents
 
-## Reading Paths
-
-### Path 1: Executive Overview (60 minutes)
-
-For quick understanding:
-
-1. [00-OVERVIEW.md](00-OVERVIEW.md) - Key findings
-2. [10-AGENT-GRANULARITY-AND-LIMITATIONS.md](10-AGENT-GRANULARITY-AND-LIMITATIONS.md) - Critical constraints
-3. [09-PROJECT-ALIGNMENT.md](09-PROJECT-ALIGNMENT.md) - Project application
-4. [06-BEST-PRACTICES.md](06-BEST-PRACTICES.md) - Quick reference section
-
-### Path 2: Implementation Focus (2.5 hours)
-
-For developers ready to build:
-
-1. [00-OVERVIEW.md](00-OVERVIEW.md) - Context
-2. [10-AGENT-GRANULARITY-AND-LIMITATIONS.md](10-AGENT-GRANULARITY-AND-LIMITATIONS.md) - Critical design decisions
-3. [01-SUBAGENTS-DEEP-DIVE.md](01-SUBAGENTS-DEEP-DIVE.md) - How subagents work
-4. [02-AGENT-SKILLS-ARCHITECTURE.md](02-AGENT-SKILLS-ARCHITECTURE.md) - How skills work
-5. [08-IMPLEMENTATION-EXAMPLES.md](08-IMPLEMENTATION-EXAMPLES.md) - Code examples
-6. [06-BEST-PRACTICES.md](06-BEST-PRACTICES.md) - Do's and don'ts
-
-### Path 3: Deep Technical Understanding (5 hours)
-
-For comprehensive knowledge:
-
-Read all documents in order (00-10)
-
-### Path 4: Specific Topics
-
-Pick documents based on your needs:
-
-- **Token optimization?** → [04-TOKEN-OPTIMIZATION.md](04-TOKEN-OPTIMIZATION.md)
-- **Multi-agent systems?** → [05-ORCHESTRATION-PATTERNS.md](05-ORCHESTRATION-PATTERNS.md)
-- **MCP integration?** → [03-MODEL-CONTEXT-PROTOCOL.md](03-MODEL-CONTEXT-PROTOCOL.md)
-- **Code examples?** → [08-IMPLEMENTATION-EXAMPLES.md](08-IMPLEMENTATION-EXAMPLES.md)
-- **Community resources?** → [07-GITHUB-RESOURCES.md](07-GITHUB-RESOURCES.md)
-
----
-
-## Key Findings Summary
-
-### Architecture Validation
-
-✅ **Our approach is validated by Anthropic's production implementation**
-
-| Our Design | Anthropic Pattern | Status |
-|------------|------------------|--------|
-| Minimal core (50 lines) | Minimal system prompt | ✅ Validated |
-| Skills (on-demand) | Progressive disclosure | ✅ Validated |
-| Subagents | Orchestrator-worker | ✅ Validated |
-| MCP integration | MCP standard | ✅ Validated |
-| Experimental validation | A/B testing | ✅ Validated |
-
-### Performance Metrics
-
-From Anthropic's research:
-
-- **90.2% improvement**: Multi-agent vs single agent (complex tasks)
-- **80% variance**: Token usage explains performance
-- **60-70% savings**: Skills vs monolithic prompts
-- **75% discount**: Prompt caching on static content
-- **15× overhead**: Multi-agent token cost (use wisely)
-- **90% time reduction**: Parallel execution benefit
-
-### Core Principles Confirmed
-
-1. **MINIMIZE**: Progressive disclosure saves 60-70% tokens
-2. **SEPARATE**: Subagents improve results by 90.2%
-3. **VALIDATE**: A/B testing is industry standard
-4. **ITERATE**: Skills enable continuous optimization
-
----
-
-## Critical Insights
-
-### 0. ⚠️ CRITICAL LIMITATION: No Nested Subagents
-
-**Subagents CANNOT call other subagents** - This is a hard constraint that shapes all design decisions.
+**Subagents CANNOT call other subagents** - This is a hard constraint:
 
 ```
 ❌ NOT POSSIBLE:
@@ -128,132 +32,273 @@ Main Agent → Subagent B
 
 **Implication**: All designs must use flat hierarchy (max 2 levels)
 
-**See**: [10-AGENT-GRANULARITY-AND-LIMITATIONS.md](10-AGENT-GRANULARITY-AND-LIMITATIONS.md) for complete analysis
+---
 
-### 1. Skills Architecture is Proven
+## Core Architecture
 
-**Three-tier progressive disclosure**:
-- Tier 1: Metadata (5 tokens per skill)
-- Tier 2: SKILL.md (~400 tokens when activated)
-- Tier 3: Resources (~200 tokens each, as needed)
+### Orchestrator-Worker Pattern
 
-**Result**: 60-70% token savings vs monolithic prompts
+The proven pattern for multi-agent systems:
 
-### 2. Token Usage = Performance
+**Orchestrator (Main Agent)**:
+- Coordinates workflow
+- Distributes tasks
+- Synthesizes results
+- Never does heavy lifting
 
-**80% of performance variance** explained by token usage
+**Workers (Subagents)**:
+- Execute specific tasks
+- Work in isolation
+- Return concise summaries
+- Focus on single responsibility
 
-**Optimization priority**:
-1. Output tokens (4× cost)
-2. Prompt caching (75% savings)
-3. Progressive loading
-4. Tool filtering
+### Configuration
 
-### 3. Multi-Agent for High-Value Tasks Only
+Subagents are defined using YAML frontmatter:
 
-**Cost**: 15× token overhead
-**Benefit**: 90.2% better results
-**Use for**: Complex, parallelizable, high-value tasks
-**Don't use for**: Simple operations, shared context tasks
-
-### 4. Orchestrator-Worker is Standard
-
-**Every successful multi-agent system uses**:
-- Orchestrator: Coordinates (doesn't execute)
-- Workers: Execute in isolated contexts
-- Communication: Lightweight summaries
-- Execution: Parallel where possible
-
-### 5. Implementation is Standardized
-
-**YAML frontmatter** for filesystem agents:
 ```yaml
 ---
-name: agent-name
-description: When to use this agent
-tools: Read, Grep, Glob
+name: code-reviewer
+description: Reviews code for quality, security, and best practices
+tools: Read, Grep
 model: claude-3-5-sonnet-20241022
 ---
-```
 
-**MCP servers** for tools and resources:
-```typescript
-server.tool({ name, description, handler });
-server.resource({ uri, mimeType, handler });
-server.prompt({ name, template, parameters });
+Review the code and provide:
+1. Security concerns
+2. Code quality issues
+3. Best practice violations
+4. Specific recommendations
 ```
 
 ---
 
-## Immediate Action Items
+## When to Use Subagents
 
-Based on research findings:
+### ✅ Use Subagents For
 
-### For Phase 0 (Experimental Framework)
+- **Isolated exploration**: Research codebases without polluting main context
+- **Parallel tasks**: Independent operations that can run simultaneously
+- **Specialized analysis**: Security reviews, code quality checks
+- **Large-scale operations**: Processing multiple files/repos
+- **Token-heavy tasks**: Operations that would bloat main context
 
-1. **Add prompt caching experiments**
-   - Measure cache hit rates
-   - Test static vs dynamic content placement
+### ❌ Don't Use Subagents For
 
-2. **Add progressive disclosure experiments**
-   - Compare monolithic vs skills
-   - Measure token savings and quality
+- **Simple operations**: Single file edits, basic searches
+- **Sequential dependencies**: Tasks that need shared state
+- **Frequent coordination**: High back-and-forth with main agent
+- **Trivial tasks**: Anything under 1-2 minute execution time
 
-3. **Add tool filtering experiments**
-   - Test full vs filtered tool sets
-   - Measure context reduction and success
+**Cost**: Subagents add 15× token overhead - use only for high-value tasks
 
-4. **Track enhanced metrics**
-   ```typescript
-   {
-     cachedTokens: number,
-     skillsLoaded: string[],
-     skillTokens: number,
-     contextWindowUsage: number
-   }
-   ```
+---
 
-### For Phase 1 (Minimal Core)
+## Performance Metrics
 
-1. **Structure .cursorrules for caching**
-   - Static content at top
-   - Dynamic content at bottom
-   - Target: 75% cache hit rate
+From Anthropic's research:
 
-2. **Design minimal core**
-   - Core principles (50 lines)
-   - Skill metadata (50 tokens)
-   - Total baseline: 250 tokens
+- **90.2% improvement**: Multi-agent vs single agent (complex tasks)
+- **15× token overhead**: Cost of multi-agent approach
+- **90% time reduction**: Benefit of parallel execution
+- **Optimal use**: Complex, parallelizable, high-value tasks
 
-### For Phase 2 (Skills)
+---
 
-1. **Implement 3-tier progressive disclosure**
-   - Tier 1: Metadata
-   - Tier 2: SKILL.md (lean, ~100 lines)
-   - Tier 3: Resources (split into files)
+## Common Patterns
 
-2. **Create initial skills**
-   - firebase-auth
-   - supabase-rls
-   - testing
-   - refactoring
+### 1. Map-Reduce Pattern
 
-### For Phase 3 (Subagents)
+```
+Main Agent: "Analyze all API endpoints"
+  → Subagent A: Analyze endpoints 1-10
+  → Subagent B: Analyze endpoints 11-20
+  → Subagent C: Analyze endpoints 21-30
+Main Agent: Synthesize all findings
+```
 
-1. **Define orchestrator-worker hierarchy**
-   ```
-   Orchestrator (Opus): project-coordinator
-   Workers (Sonnet):
-   - planner
-   - implementer
-   - security-reviewer
-   - quality-reviewer
-   - test-engineer
-   ```
+### 2. Specialized Review Pattern
 
-2. **Implement lightweight summaries**
-   - Workers return 1-2k tokens
-   - Not 50k token explorations
+```
+Main Agent: Implements feature
+  → Security Subagent: Reviews for security issues
+  → Quality Subagent: Reviews for code quality
+  → Test Subagent: Reviews test coverage
+Main Agent: Incorporates feedback
+```
+
+### 3. Research Pattern
+
+```
+Main Agent: Needs to understand codebase
+  → Explore Subagent: Maps codebase structure
+Main Agent: Uses structure to implement feature
+```
+
+---
+
+## Best Practices
+
+### 1. Keep Summaries Lightweight
+
+Return 1-2k tokens, not 50k:
+
+```
+❌ Bad: Full code listing with analysis
+✅ Good: Bullet points of findings + file:line refs
+```
+
+### 2. Filter Tools Aggressively
+
+Only provide tools the subagent needs:
+
+```yaml
+# ❌ Too many tools
+tools: Read, Write, Edit, Grep, Glob, Bash, WebFetch
+
+# ✅ Minimal set
+tools: Read, Grep
+```
+
+### 3. Use Descriptive Names
+
+Help Claude choose the right subagent:
+
+```yaml
+# ❌ Generic
+name: analyzer
+
+# ✅ Specific
+name: security-vulnerability-scanner
+description: Scans code for security vulnerabilities (SQL injection, XSS, auth bypasses)
+```
+
+### 4. Avoid Context Handoff
+
+Don't pass large context between agents:
+
+```
+❌ Pass full codebase → subagent → process
+✅ Main knows structure → subagent reads specific files
+```
+
+### 5. Parallelize When Possible
+
+Run independent subagents simultaneously:
+
+```typescript
+// Single response with multiple Task calls
+[
+  Task(code-reviewer),
+  Task(test-generator),
+  Task(documentation-writer)
+]
+```
+
+---
+
+## Token Optimization
+
+### Reduce Subagent Token Usage
+
+1. **Minimal prompts**: Keep agent descriptions concise
+2. **Tool filtering**: Only essential tools in `tools:` list
+3. **Focused tasks**: Single responsibility per agent
+4. **Brief responses**: Request summaries, not full details
+
+### Selective MCP Access
+
+Subagents can specify which MCP servers to include:
+
+```yaml
+mcp_servers: [github, filesystem]  # Only these 2
+```
+
+This reduces system prompt size significantly.
+
+---
+
+## Integration with Skills
+
+**Subagents + Skills** is powerful:
+
+- Main agent loads appropriate skills
+- Spawns specialized subagents
+- Subagents inherit skills OR use filtered set
+- Combine isolation + expertise
+
+Example:
+```
+Main: Loads "firebase-security" skill
+  → Security Subagent: Uses skill patterns to review
+  → Returns findings using skill framework
+Main: Applies fixes using skill patterns
+```
+
+---
+
+## Project Alignment
+
+For **Optimized AI**, use subagents for:
+
+### Phase 3 Orchestration
+
+```yaml
+# Orchestrator (uses Claude Opus for coordination)
+name: project-coordinator
+description: Coordinates project implementation workflow
+tools: Task
+```
+
+```yaml
+# Workers (use Claude Sonnet for execution)
+name: implementer
+description: Implements features following established patterns
+tools: Read, Write, Edit, Grep, Bash
+
+name: security-reviewer
+description: Reviews code for security vulnerabilities
+tools: Read, Grep
+
+name: test-engineer
+description: Writes and runs tests
+tools: Read, Write, Bash
+
+name: quality-reviewer
+description: Reviews code quality and best practices
+tools: Read, Grep
+```
+
+### Experimental Framework
+
+Use subagents in Phase 0 experiments to test:
+
+- Impact of subagent vs single agent
+- Optimal task granularity
+- Token overhead vs quality improvement
+- Parallel execution benefits
+
+---
+
+## Key Takeaways
+
+1. **Subagents provide context isolation** - Fresh start for each task
+2. **Flat hierarchy only** - No nesting allowed (hard constraint)
+3. **High cost, high value** - 15× overhead, use selectively
+4. **Orchestrator-worker pattern** - Proven architecture
+5. **Lightweight summaries** - Return focused results
+6. **Tool filtering** - Reduce context noise
+7. **Parallel execution** - Major speed benefit
+8. **Skills integration** - Combine isolation + expertise
+
+---
+
+## Related Research
+
+- **[Skills](../skills/)** - Agent Skills architecture and progressive disclosure
+- **[MCP](../mcp/)** - Model Context Protocol integration
+- **[Triggers](../triggers/)** - Hooks and automation patterns
+- **[Built-in Tools](../build-in-tools/)** - Claude Code tools reference
 
 ---
 
@@ -263,91 +308,31 @@ Based on research findings:
 
 - [Claude Subagents Docs](https://docs.claude.com/en/docs/claude-code/sub-agents)
 - [Agent SDK Subagents](https://docs.claude.com/en/api/agent-sdk/subagents)
-- [Agent Skills Docs](https://docs.anthropic.com/en/docs/agents-and-tools/agent-skills/overview)
 - [MCP Documentation](https://docs.anthropic.com/en/docs/agents-and-tools/mcp)
-- [Anthropic Engineering Blog](https://www.anthropic.com/engineering)
 
 ### GitHub Resources
 
-**Agent Collections**:
 - [VoltAgent/awesome-claude-code-subagents](https://github.com/VoltAgent/awesome-claude-code-subagents) - 100+ agents
 - [wshobson/agents](https://github.com/wshobson/agents) - Production-ready collection
 - [avivl/claude-007-agents](https://github.com/avivl/claude-007-agents) - Orchestration system
 
-**Official SDKs**:
-- [anthropics/claude-agent-sdk-python](https://github.com/anthropics/claude-agent-sdk-python)
-- [modelcontextprotocol/typescript-sdk](https://github.com/modelcontextprotocol/typescript-sdk)
-
-**MCP Servers**:
-- [modelcontextprotocol](https://github.com/modelcontextprotocol) - Official MCP org
-
-### Community Resources
-
-- [ClaudeLog](https://claudelog.com) - Docs, guides, tutorials
-- [Cursor IDE Blog](https://www.cursor-ide.com/blog) - Multi-agent guides
-- GitHub Topics: [claude-agents](https://github.com/topics/claude-agents)
-
 ---
 
-## Document Maintenance
+## Core Patterns Reference
 
-### Last Updated
-November 3, 2025
+**Progressive disclosure (3-tier)**:
+- Tier 1: Metadata (5 tokens per skill)
+- Tier 2: SKILL.md (~400 tokens when activated)
+- Tier 3: Resources (~200 tokens each, as needed)
 
-### Update Frequency
-- Review quarterly or when major Claude updates released
-- Add new examples as discovered
-- Update metrics as Anthropic publishes new research
+**Orchestrator-worker (flat hierarchy)**:
+- Main agent = Air traffic controller
+- Subagents = Specialized workers
+- Communication = Lightweight summaries
 
-### Contributing
-When adding to this research:
-1. Update this README with new document
-2. Cross-reference in related documents
-3. Update reading paths if needed
-4. Add to appropriate sections
-
----
-
-## Questions?
-
-### Where to start?
-Read [00-OVERVIEW.md](00-OVERVIEW.md) first
-
-### How does this apply to our project?
-See [09-PROJECT-ALIGNMENT.md](09-PROJECT-ALIGNMENT.md)
-
-### Need code examples?
-See [08-IMPLEMENTATION-EXAMPLES.md](08-IMPLEMENTATION-EXAMPLES.md)
-
-### Want best practices?
-See [06-BEST-PRACTICES.md](06-BEST-PRACTICES.md)
-
-### Looking for repos?
-See [07-GITHUB-RESOURCES.md](07-GITHUB-RESOURCES.md)
-
----
-
-## Quick Reference Card
-
-**Key Metrics to Remember**:
-- Skills: 60-70% token savings
-- Multi-agent: 90.2% better results, 15× cost
-- Prompt caching: 75% discount
-- Token usage: 80% of performance variance
-- Output tokens: 4× cost of input
-
-**Critical Constraints**:
-- ⚠️ **No nested subagents** - Flat hierarchy only
-- ⚠️ **Main agent = Air traffic controller** - Never does context-heavy work
-- ⚠️ **Most "agents" should be skills** - Only use agents for isolated, context-heavy work
-
-**Core Patterns**:
-- Progressive disclosure (3-tier)
-- Orchestrator-worker (flat hierarchy)
-- Map/reduce (subagents explore, main synthesizes)
-- Lightweight summaries (1-2k tokens)
-- Tool filtering (minimal set)
-- Prompt caching (static at top)
+**Map/reduce pattern**:
+- Subagents explore independently
+- Main agent synthesizes results
 
 **File Formats**:
 - Agents: YAML frontmatter + Markdown
@@ -356,4 +341,4 @@ See [07-GITHUB-RESOURCES.md](07-GITHUB-RESOURCES.md)
 
 ---
 
-**This research comprehensively validates our Optimized AI architectural approach and provides concrete implementation guidance.**
+**This research validates the Optimized AI architectural approach and provides concrete implementation guidance.**
