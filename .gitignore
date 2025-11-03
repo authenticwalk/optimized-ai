@@ -26,7 +26,6 @@ build/
 *.swp
 *.swo
 *~
-.DS_Store
 
 # Testing
 coverage/
@@ -37,7 +36,7 @@ coverage/
 .temp/
 temp/
 
-# Experiment artifacts (generated during testing)
+# Experiment artifacts (generated code during testing)
 experiments/results/*/artifacts/
 experiments/results/*/generated-code/
 
@@ -49,9 +48,16 @@ Thumbs.db
 .cursorignore
 .cursorindexingignore
 
-# Keep these tracked:
-# - .plan/initial-design/ (design docs)
-# - .ai-knowledge/ (when created, for learning)
+# SQLite temporary files
+*.db-shm
+*.db-wal
+
+# Keep these tracked (explicitly listed for clarity):
+# - .plan/initial-design/ (initial design docs)
+# - .ai-knowledge/ (complete folder - plans, research, knowledge base)
+#   - .ai-knowledge/knowledge.db (SQLite database)
+#   - .ai-knowledge/plans/ (all plans and subtasks)
+#   - .ai-knowledge/research/ (all research)
 # - experiments/scenarios/ (test scenarios)
 # - experiments/results/*/definition.json (experiment definitions)
 # - experiments/results/*/analysis.json (analysis results)

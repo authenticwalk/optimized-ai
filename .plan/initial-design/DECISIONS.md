@@ -35,54 +35,112 @@ Store knowledge in `.ai-knowledge/` folder within each project, tracked by git.
 
 ---
 
-## ADR-002: Git-Ignore `.plan/` Folder
+## ADR-002: Git-Track `.ai-knowledge/` Folder with Plans and Research
 
 **Status**: Accepted  
-**Date**: 2025-11-03
+**Date**: 2025-11-03  
+**Updated**: 2025-11-03
 
 ### Context
-AI needs a workspace for planning, scratch work, and progress tracking.
+AI needs structured storage for plans, research, and learnings that can be referenced and learned from over time.
 
 ### Decision
-Create `.plan/` folder for AI workspace, add to `.gitignore`.
+Create `.ai-knowledge/` folder with structured subfolders, **tracked by git**.
+
+**Structure**:
+```
+.ai-knowledge/
+├── knowledge.db (SQLite - searchable knowledge base)
+├── plans/
+│   ├── {plan-name}/
+│   │   ├── plan.md
+│   │   ├── progress.md
+│   │   ├── learnings.md
+│   │   └── subtasks/
+│   │       └── {subtask-name}/
+│   └── ...
+└── research/
+    ├── {topic}/
+    │   ├── overview.md
+    │   └── {optional-subtopic}/
+    │       └── findings.md
+    └── ...
+```
 
 ### Rationale
-- Work-in-progress doesn't belong in git history
-- Reduces noise in commits
-- Faster git operations
-- Archives can be selectively committed if needed
-- Matches workflow tools like claude-flow
+- **Plans are learning artifacts** - Should be preserved and referenced
+- **Research is reusable** - "Best practices for X" benefits future tasks
+- **SQLite for search** - Fast, structured queries across knowledge
+- **Git-tracked** - Version controlled, shareable with team
+- **Structured folders** - Easy to navigate and organize
+- **Supports learning loops** - AI can learn from past plans
 
 ### Consequences
-- Plan history not preserved (acceptable, we archive)
-- Each developer has their own plan state (good)
-- Can't review historical plans (not needed)
+- Plans become part of project history (GOOD - valuable context)
+- Knowledge base grows with project (manageable, valuable)
+- Team can see AI's reasoning process (transparency)
+- Can reference past solutions easily
+- SQLite needs backup/migration strategy
+- Folder structure needs discipline to maintain
 
 ---
 
-## ADR-003: MCP Over Custom Protocol
+## ADR-003: Direct Scripts Over MCP Middleware (Revised)
 
 **Status**: Accepted  
-**Date**: 2025-11-03
+**Date**: 2025-11-03  
+**Updated**: 2025-11-03
 
 ### Context
-Need communication protocol between AI and system components (knowledge base, IDE, infrastructure).
+Need way for AI to interact with external tools (Firebase, Supabase, IDE, etc.). Initially considered MCP servers for everything.
 
 ### Decision
-Use Model Context Protocol (MCP) for all integrations.
+**Prefer direct CLI scripts over MCP middleware.** Only use MCP when actually necessary.
+
+**Approach**:
+1. Try direct CLI first (firebase, supabase, tsx, etc.)
+2. Create simple shell scripts for complex operations
+3. Skills call scripts directly
+4. Only add MCP if proven necessary (complex state, real-time data, etc.)
 
 ### Rationale
-- Standard protocol, Claude supports it natively
-- Extensible for future capabilities
-- Well-documented
-- Tool ecosystem building around it
-- No custom protocol maintenance
+- **Simpler**: CLI tools already exist (firebase, supabase, tsx)
+- **Less middleware**: No unnecessary abstraction layers
+- **Easier to test**: Scripts can be tested independently
+- **More maintainable**: Standard tools vs custom MCP servers
+- **Faster development**: Don't build what already exists
+
+### Examples
+
+**Firebase**:
+```yaml
+# Instead of: MCP server wrapper
+# Just use: Firebase CLI directly
+skill: firebase-debug
+scripts:
+  check-connection: firebase projects:list
+  query-users: firebase firestore:get users --limit 10
+```
+
+**TypeScript Scripts**:
+```yaml
+skill: data-analysis
+scripts:
+  analyze: tsx scripts/analyze-data.ts
+```
+
+### When MCP Might Be Needed
+- Complex state management across calls
+- Real-time data streaming
+- Cross-tool coordination
+- IDE integration (VSCode extension)
 
 ### Consequences
-- Learn MCP specification
-- Follow MCP patterns and conventions
-- Benefit from MCP ecosystem growth
-- Easier integration with other tools
+- **Positive**: Simpler architecture, less code to maintain
+- **Positive**: Use battle-tested CLI tools
+- **Positive**: Faster to implement
+- **Trade-off**: May need MCP later for specific cases
+- **Risk**: If CLI changes, scripts need updates (but same for MCP)
 
 ---
 
@@ -290,35 +348,53 @@ Build VSCode/Cursor extension exposing IDE operations via MCP.
 
 ---
 
-## ADR-011: Firebase and Supabase First-Class Support
+## ADR-011: Firebase and Supabase via CLI (Revised)
 
 **Status**: Accepted  
-**Date**: 2025-11-03
+**Date**: 2025-11-03  
+**Updated**: 2025-11-03
 
 ### Context
-User primarily uses Firebase and Supabase for infrastructure.
+User primarily uses Firebase and Supabase for infrastructure. Need AI to debug and validate.
 
 ### Decision
-Build dedicated MCP servers for Firebase and Supabase with debug/validation helpers.
+Use Firebase CLI and Supabase CLI directly via shell scripts. No MCP middleware initially.
 
-**Features:**
-- Query data for debugging
-- Validate security rules/RLS
-- Test cloud functions/RPCs
-- Check auth state
-- Verify writes successful
+**Approach**:
+```yaml
+# firebase-debug.skill
+scripts:
+  list-projects: firebase projects:list
+  query-firestore: firebase firestore:get $COLLECTION --limit 10
+  check-auth: firebase auth:export auth-dump.json
+  validate-rules: firebase deploy --only firestore:rules --dry-run
+  test-function: firebase functions:shell
+
+# supabase-debug.skill  
+scripts:
+  db-dump: supabase db dump
+  list-functions: supabase functions list
+  check-migrations: supabase db diff
+  test-connection: supabase status
+```
 
 ### Rationale
-- User's primary infrastructure
-- Debugging these is common task
-- AI can validate changes worked
-- Can read data to help fix issues
+- **Firebase CLI** and **Supabase CLI** already have all needed features
+- No need to wrap them in MCP servers
+- Simpler, more maintainable
+- AI can call CLI directly
+- Skills coordinate which commands to use
+
+### When MCP Might Be Needed
+- Real-time listeners
+- Complex multi-step workflows requiring state
+- If CLI proves insufficient (validate first)
 
 ### Consequences
-- Need Firebase SDK integration
-- Need Supabase client integration
-- Need to handle auth/credentials securely
-- But: Enables AI to debug effectively
+- **Positive**: Much simpler implementation
+- **Positive**: Use official, maintained CLIs
+- **Positive**: No auth complexity (CLIs handle it)
+- **Trade-off**: If CLI insufficient, add MCP later
 
 ---
 
@@ -364,7 +440,8 @@ Strongly opinionated defaults, but allow overrides via config.
 ## ADR-013: Workspace Cleanliness as First-Class Feature
 
 **Status**: Accepted  
-**Date**: 2025-11-03
+**Date**: 2025-11-03  
+**Updated**: 2025-11-03
 
 ### Context
 AI often creates artifacts and leaves them around, polluting projects.
@@ -373,25 +450,26 @@ AI often creates artifacts and leaves them around, polluting projects.
 Make workspace cleanliness a core system feature, not an afterthought.
 
 **Rules:**
-- AI workspace in `.plan/` (ignored)
-- Learnings in `.ai-knowledge/` (tracked)
+- AI workspace in `.ai-knowledge/` (tracked, structured)
+- Plans organized in `.ai-knowledge/plans/{plan-name}/`
+- Research organized in `.ai-knowledge/research/{topic}/`
 - No artifacts in home directory
-- Automatic cleanup after task completion
-- Archive old plans (keep last 5)
-- Delete abandoned files
+- No abandoned files in project root
+- Clear folder structure maintained
 
 ### Rationale
 - User specifically hates messy workspaces
 - Professional projects need clean structure
 - Abandoned files confusing
 - Clear organization aids understanding
+- Plans and research are valuable learning artifacts
 
 ### Consequences
-- Need cleanup agent/logic
+- Need disciplined folder organization
 - Need to track what AI creates
-- Need archive system
-- More complex than leaving files around
-- But: Much better UX
+- All AI work products tracked in git (transparency)
+- Knowledge base grows with project (valuable)
+- But: Much better UX and learning capability
 
 ---
 

@@ -7,8 +7,8 @@ A scientifically-validated AI coding assistant system for Claude Code/Cursor tha
 ## 🎯 Core Principles
 
 1. **MINIMIZE**: Maximum results, minimum overhead
-   - Tiny configs (< 250 lines total)
-   - Load only what's needed
+   - Tiny .cursorrules (< 100 lines total)
+   - Load only what's needed (skills on-demand)
    - Every token justified by experiments
 
 2. **SEPARATE**: Context isolation
@@ -92,12 +92,15 @@ echo "Add user authentication with Firebase" > .plan/current-task.md
 
 ## 🏗️ Current Status
 
-**Phase 1 (Foundation)** - In Progress
-- CLI tool with init wizard
-- Knowledge system architecture
-- Configuration management
+**Phase 0 (Experimental Framework)** - Design Complete, Ready to Implement
+- Experiment runner CLI
+- Scenario library
+- Validation engine
+- Baseline measurements
 
-See [ROADMAP.md](ROADMAP.md) for detailed timeline.
+See [.plan/STATUS.md](.plan/STATUS.md) for current progress.
+
+**Key Architecture Change**: Single minimal `.cursorrules` file (< 100 lines) with on-demand skill loading. Cursor auto-includes claude.md, so just one config to optimize!
 
 ## 🎯 Tech Stack
 
