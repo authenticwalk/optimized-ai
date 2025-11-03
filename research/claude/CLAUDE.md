@@ -28,6 +28,203 @@ Before implementing any CLAUDE.md strategy, you MUST validate through experiment
 
 ---
 
+## Important Update: Main Branch Reorganization
+
+**Date**: 2025-11-03 (after initial research)
+
+The main branch has been reorganized with significant structural changes. This section clarifies how the research aligns with the new structure.
+
+### Main Branch Changes
+
+**File Structure Reorganization:**
+```
+OLD (research branch):                 NEW (main branch):
+├── .plan/initial-design/              ├── .plan/initial-design/
+│   ├── CORE-PRINCIPLES.md            │   ├── PLAN.md (new Phase 0 plan)
+│   ├── EXPERIMENTAL-VALIDATION.md    │   ├── principles/
+│   ├── REVISED-ROADMAP.md            │   │   ├── 1-minimize.md
+│   ├── ROADMAP.md                    │   │   ├── 2-separate.md
+│   └── ...                           │   │   ├── 3-validate.md
+                                       │   │   └── 4-learn.md
+                                       │   └── ...
+                                       └── experiments/
+                                           ├── README.md
+                                           ├── EXPERIMENTS-LOG.md
+                                           └── LEARNINGS.md
+```
+
+**Key Changes:**
+1. **Principles split**: Monolithic CORE-PRINCIPLES.md → 4 separate principle files
+2. **New experiments/ folder**: Structured location for experimental validation
+3. **PLAN.md created**: Detailed Phase 0 implementation plan
+4. **Consolidated roadmap**: Multiple roadmap files merged
+
+### .cursorrules vs CLAUDE.md Clarification
+
+**CRITICAL INSIGHT from main branch README:**
+
+> "Key Architecture Change: Single minimal `.cursorrules` file (< 100 lines) with on-demand skill loading. **Cursor auto-includes claude.md**, so just one config to optimize!"
+
+**What this means:**
+
+| Tool | Primary Config | Auto-loaded Files | Notes |
+|------|---------------|-------------------|-------|
+| **Claude Code** | CLAUDE.md | CLAUDE.md (system memory) | Official Anthropic CLI tool |
+| **Cursor** | .cursorrules | .cursorrules + CLAUDE.md | Cursor includes both automatically |
+| **Either** | Both work | Depends on tool | CLAUDE.md = memory, .cursorrules = rules |
+
+**Implications for this research:**
+
+1. **This research focuses on CLAUDE.md** (Claude Code's memory system)
+2. **Main branch focuses on .cursorrules** (Cursor's rule system)
+3. **Both approaches are valid** - same principles apply:
+   - Keep core config minimal (< 100-200 lines)
+   - Use Skills for on-demand loading
+   - Validate everything experimentally
+
+4. **Can use both together:**
+   ```
+   .cursorrules (< 100 lines):  Core rules and constraints
+   CLAUDE.md (< 200 lines):     Project context and patterns
+   Skills:                      Domain-specific on-demand instructions
+   ```
+
+### Two Skill Systems: Official vs Custom
+
+**IMPORTANT DISTINCTION discovered:**
+
+#### Official Claude Code Skills (this research documents this)
+
+**Location:** `.claude/skills/`
+**Format:** SKILL.md with YAML frontmatter + Markdown
+**Discovery:** Automatic by Claude Code
+**Loading:** Progressive disclosure (30-50 tokens until loaded)
+**Documentation:** https://docs.claude.com/en/docs/claude-code/skills
+
+**Example:**
+```markdown
+---
+name: firebase-auth
+description: Firebase authentication patterns. Use when implementing login/signup.
+allowed-tools: Read,Write,Bash(npm:*)
+---
+
+# Firebase Authentication Instructions
+[Instructions here]
+```
+
+#### Custom .skill System (main branch proposes this)
+
+**Location:** `skills/` (custom)
+**Format:** YAML-only .skill files
+**Discovery:** Custom loader (to be built)
+**Loading:** Custom implementation
+**Documentation:** See `.plan/initial-design/principles/2-separate.md`
+
+**Example:**
+```yaml
+name: firebase-auth
+description: Firebase Authentication patterns
+triggers:
+  keywords: [firebase, auth, authentication]
+  files: [firebase.config.*, auth/*.ts]
+content: |
+  # Firebase auth guidance
+  [Instructions here]
+scripts:
+  check-auth: ./scripts/firebase-check-auth.sh
+```
+
+**Key Differences:**
+
+| Feature | Official Claude Code Skills | Custom .skill System (main) |
+|---------|---------------------------|---------------------------|
+| **Built-in** | ✅ Yes (Claude Code native) | ❌ No (custom build required) |
+| **Works today** | ✅ Yes | ❌ No (Phase 2 implementation) |
+| **Format** | Markdown + YAML frontmatter | YAML only |
+| **Scripts** | Can include scripts in directory | Direct script execution emphasis |
+| **Discovery** | Automatic by Claude Code | Custom loader needed |
+| **Token efficiency** | 30-50 tokens until loaded | TBD (needs validation) |
+| **MCP integration** | Supported | Intentionally avoiding (prefer scripts) |
+
+**Recommendation:**
+
+1. **Short term (Phase 0-1):** Use official Claude Code Skills
+   - Works immediately, no build required
+   - Token efficiency proven (30-50 tokens)
+   - Well-documented and supported
+
+2. **Long term (Phase 2+):** Consider custom system IF:
+   - Official skills prove limiting
+   - Custom triggers provide measurable benefit
+   - Validated through experiments
+
+3. **Pragmatic:** Can use official Skills while evaluating custom approach
+
+### Updated References for Main Branch
+
+**When main branch files are referenced in this research:**
+
+| This Research References | Main Branch Equivalent |
+|-------------------------|----------------------|
+| `.plan/initial-design/CORE-PRINCIPLES.md` | `.plan/initial-design/principles/1-minimize.md` (and 2,3,4) |
+| `.plan/initial-design/EXPERIMENTAL-VALIDATION.md` | `.plan/initial-design/principles/3-validate.md` + `experiments/README.md` |
+| `.plan/initial-design/REVISED-ROADMAP.md` | `.plan/initial-design/PLAN.md` |
+| N/A | `experiments/EXPERIMENTS-LOG.md` (new) |
+| N/A | `experiments/LEARNINGS.md` (new) |
+
+### How This Research Aligns with Main Branch
+
+**Alignment:**
+
+1. ✅ **MINIMIZE principle**: Both target < 100-200 line core config
+2. ✅ **SEPARATE principle**: Both propose on-demand skill loading
+3. ✅ **VALIDATE principle**: Both require experimental validation
+4. ✅ **Progressive disclosure**: Both recognize benefits of loading only what's needed
+
+**Differences:**
+
+1. **Config file focus:**
+   - This research: CLAUDE.md (Claude Code memory)
+   - Main branch: .cursorrules (Cursor rules)
+   - Reality: Both work, use both if needed
+
+2. **Skill system:**
+   - This research: Official Claude Code Skills (available now)
+   - Main branch: Custom .skill system (Phase 2, needs building)
+   - Pragmatic: Start with official, validate need for custom
+
+3. **MCP philosophy:**
+   - This research: Documents MCP as official approach
+   - Main branch: Prefers direct script execution
+   - Best: Validate both approaches experimentally (Exp-007 on main)
+
+**Recommendation:**
+
+- **Use this research for:** Understanding official Claude Code mechanics, CLAUDE.md behavior, official Skills system
+- **Use main branch for:** Overall architecture, Phase 0 implementation, experiment structure
+- **Validate:** Run experiments comparing official Skills vs future custom .skill system
+
+### Experiments Folder Structure (Main Branch)
+
+**New in main branch:**
+
+```
+experiments/
+├── README.md              # Experimental philosophy and quick start
+├── EXPERIMENTS-LOG.md     # Chronological record (never delete)
+├── LEARNINGS.md           # Distilled insights (updated after each exp)
+├── scenarios/             # Test scenario definitions
+├── results/               # Experiment artifacts
+├── runner/                # CLI tool (Phase 0 deliverable)
+├── validation/            # Validation engine (Phase 0 deliverable)
+└── ab-testing/            # Statistical tools (Phase 0 deliverable)
+```
+
+**This aligns with Part 8 of this research** (Validation Experiments), providing the infrastructure to run the experiments proposed in this document.
+
+---
+
 ## Part 1: How CLAUDE.md Actually Works
 
 ### File Discovery Mechanism
@@ -1155,28 +1352,42 @@ fi
 3. **Agents**: Complex workflows
 4. **@imports**: For existing docs (README, architecture, etc.)
 
-**Example structure:**
+**Example structure (with main branch references):**
 ```
 /project/
 ├── CLAUDE.md                    # Core (200 lines, ~500 tokens)
 │   ├── @README.md               # Import existing docs
-│   ├── @.plan/initial-design/CORE-PRINCIPLES.md
+│   ├── @.plan/initial-design/principles/1-minimize.md
 │   └── Core instructions
 │
+├── .cursorrules                 # Optional: Cursor-specific rules (< 100 lines)
+│
 ├── .claude/
-│   ├── skills/
+│   ├── skills/                  # Official Claude Code Skills (works now)
 │   │   ├── firebase/
-│   │   │   ├── auth.skill       # Instead of lib/firebase/CLAUDE.md
-│   │   │   └── firestore.skill  # Instead of lib/firebase/db/CLAUDE.md
+│   │   │   ├── auth/
+│   │   │   │   └── SKILL.md     # Instead of lib/firebase/CLAUDE.md
+│   │   │   └── firestore/
+│   │   │       └── SKILL.md     # Instead of lib/firebase/db/CLAUDE.md
 │   │   └── patterns/
-│   │       └── testing.skill    # Instead of tests/CLAUDE.md
+│   │       └── testing/
+│   │           └── SKILL.md     # Instead of tests/CLAUDE.md
 │   │
 │   └── agents/
 │       ├── planner.agent
 │       └── implementer.agent
 │
-└── .ai-knowledge/
-    └── patterns.json            # Learned patterns
+├── skills/                      # Custom .skill system (main branch, Phase 2)
+│   ├── firebase-auth.skill      # Custom YAML format (future)
+│   └── testing.skill            # Custom YAML format (future)
+│
+├── .ai-knowledge/               # Learned patterns (git-tracked)
+│   └── patterns.json
+│
+└── experiments/                 # Validation infrastructure (main branch)
+    ├── README.md
+    ├── EXPERIMENTS-LOG.md
+    └── LEARNINGS.md
 ```
 
 ---
@@ -1349,8 +1560,9 @@ Savings: 22% even with 2 skills loaded
 
 ---
 
-**Document Version**: 1.1
+**Document Version**: 1.2
 **Last Updated**: 2025-11-03
 **Added in v1.1**: Path clarifications, workarounds, bug tracking, revisit schedule
+**Added in v1.2**: Main branch reorganization section, .cursorrules vs CLAUDE.md clarification, official vs custom skills comparison, experiments/ folder reference, updated file paths
 **Next Review**: After Phase 1 validation experiments OR quarterly bug check
 **Status**: Ready for implementation and validation
