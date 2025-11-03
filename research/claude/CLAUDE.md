@@ -926,7 +926,431 @@ This architecture aligns perfectly with your MINIMIZE and VALIDATE principles wh
 
 ---
 
-**Document Version**: 1.0
+## Part 13: Path Import Clarifications & Workarounds
+
+### Import Path Syntax Explained
+
+**Critical clarification needed from the research:**
+
+| Syntax | Meaning | Example | Use Case |
+|--------|---------|---------|----------|
+| `@~/` | User's home directory | `@~/.claude/my-settings.md` | Personal preferences not in repo |
+| `@` | Project root (relative) | `@docs/api.md` | Project documentation |
+| `@./` | Project root (explicit relative) | `@./lib/README.md` | Same as `@` |
+
+**Important distinctions:**
+
+1. **`@~/` is NOT project root** - it's the user's home directory (e.g., `/home/username/.claude/`)
+   - Use for: Personal instructions that shouldn't be in the repo
+   - Example: `@~/.claude/personal-coding-style.md`
+   - Team benefit: Each developer can have personal preferences without conflicts
+
+2. **`@` and `@./` are project-relative** - relative to project root, NOT to the CLAUDE.md file doing the importing
+   - Use for: Project documentation, shared instructions
+   - Example: `@docs/architecture.md` loads from `/project/docs/architecture.md`
+   - Works from any CLAUDE.md in the project
+
+3. **Relative path resolution bug (#4754)**: Imports from user's `~/.claude/CLAUDE.md` sometimes fail because they're resolved relative to CWD instead of relative to the importing file
+   - Status: Known bug on Linux systems
+   - Workaround: Use absolute paths in `~/.claude/CLAUDE.md`
+
+### Example Import Usage
+
+**In `/project/CLAUDE.md`:**
+```markdown
+# Project Configuration
+
+@README.md
+@docs/coding-standards.md
+@docs/git-workflow.md
+@~/.claude/personal-preferences.md
+
+## Core Principles
+...
+```
+
+**Token impact:**
+- Each import adds the full content of that file to your context
+- Recursive imports allowed (max depth: 5)
+- Check loaded files with `/memory` command
+
+---
+
+## Part 14: Subdirectory Bug Workarounds
+
+### The Problem (Detailed)
+
+**What should work according to docs:**
+```
+/project/
+├── CLAUDE.md                    # Loaded ✅
+├── lib/
+│   ├── CLAUDE.md                # Should load when in lib/ ❌
+│   └── auth/
+│       ├── CLAUDE.md            # Should load when in auth/ ❌
+│       └── login.ts
+```
+
+**When editing `/project/lib/auth/login.ts`:**
+- ✅ SHOULD load: `/project/CLAUDE.md`, `/project/lib/CLAUDE.md`, `/project/lib/auth/CLAUDE.md`
+- ❌ ACTUALLY loads: Only `/project/CLAUDE.md`
+
+### Workaround Option 1: Explicit @imports
+
+**Strategy**: Import subdirectory CLAUDE.md files in your root CLAUDE.md
+
+**Root `/project/CLAUDE.md`:**
+```markdown
+# Project Core Configuration
+
+## Core Rules
+[Core instructions here]
+
+## Domain-Specific Instructions
+@lib/CLAUDE.md
+@lib/auth/CLAUDE.md
+@components/CLAUDE.md
+```
+
+**Pros:**
+- ✅ Simple to implement
+- ✅ All context loaded at session start
+- ✅ No need to remember to load manually
+
+**Cons:**
+- ❌ Loads ALL subdirectory context even if not needed
+- ❌ Defeats the purpose of subdirectory organization
+- ❌ Token bloat (all files loaded upfront)
+- ❌ Goes against MINIMIZE principle
+
+**Verdict**: Not recommended for large projects
+
+### Workaround Option 2: Explicit Read Instructions
+
+**Strategy**: Add instructions in root CLAUDE.md to read subdirectory CLAUDE.md when working in those areas
+
+**Root `/project/CLAUDE.md`:**
+```markdown
+# Project Configuration
+
+## Domain-Specific Instructions
+
+When working on authentication code (in `lib/auth/`):
+- IMPORTANT: Read and follow `@lib/auth/CLAUDE.md` before starting
+
+When working on database code (in `lib/db/`):
+- IMPORTANT: Read and follow `@lib/db/CLAUDE.md` before starting
+
+When working on API endpoints (in `routes/api/`):
+- IMPORTANT: Read and follow `@routes/api/CLAUDE.md` before starting
+```
+
+**Pros:**
+- ✅ Explicit instructions remind Claude to check subdirectory files
+- ✅ Only loads context when needed
+- ✅ Simple to implement
+
+**Cons:**
+- ❌ Relies on Claude following instructions (not always reliable)
+- ❌ Adds overhead to root CLAUDE.md
+- ❌ User might need to prompt Claude explicitly
+
+**Verdict**: Reasonable temporary workaround
+
+### Workaround Option 3: Use Skills Instead (RECOMMENDED)
+
+**Strategy**: Don't use subdirectory CLAUDE.md files at all - use Skills system
+
+**Instead of:**
+```
+/project/
+├── CLAUDE.md
+├── lib/
+│   ├── auth/
+│   │   └── CLAUDE.md            # Don't do this
+```
+
+**Do this:**
+```
+/project/
+├── CLAUDE.md
+└── .claude/
+    └── skills/
+        └── auth/
+            └── SKILL.md         # Do this instead
+```
+
+**SKILL.md content:**
+```markdown
+---
+name: auth-patterns
+description: Authentication implementation patterns. Use when implementing login, signup, password reset, or session management.
+allowed-tools: Read,Write,Bash(npm:*)
+---
+
+# Authentication Patterns
+
+## When to Use
+- Implementing user authentication
+- Working on login/signup flows
+- Managing sessions
+- Password reset functionality
+
+## Instructions
+[Your auth-specific instructions here]
+```
+
+**Pros:**
+- ✅ Works with current Claude Code (no bugs)
+- ✅ Only loads when needed (30-50 tokens until invoked)
+- ✅ Aligns with MINIMIZE principle
+- ✅ Better organization and discoverability
+- ✅ Can restrict tool access per skill
+
+**Cons:**
+- ❌ Different mental model (skills vs subdirectories)
+- ❌ Requires learning Skills system
+
+**Verdict**: STRONGLY RECOMMENDED - most reliable and efficient
+
+### Workaround Option 4: SessionStart Hooks
+
+**Strategy**: Use hooks to inject context based on current working directory
+
+**`.claude/hooks/session-start.sh`:**
+```bash
+#!/bin/bash
+
+# Check current directory and load relevant CLAUDE.md
+if [[ "$PWD" == *"/lib/auth"* ]]; then
+    echo "Loading auth-specific instructions from lib/auth/CLAUDE.md"
+    cat lib/auth/CLAUDE.md
+fi
+
+if [[ "$PWD" == *"/lib/db"* ]]; then
+    echo "Loading database-specific instructions from lib/db/CLAUDE.md"
+    cat lib/db/CLAUDE.md
+fi
+```
+
+**Pros:**
+- ✅ Automatic based on CWD
+- ✅ Only loads when in relevant directory
+- ✅ Transparent to user
+
+**Cons:**
+- ❌ Requires hooks knowledge
+- ❌ Adds complexity
+- ❌ May not trigger when editing files from different directory
+- ❌ Experimental approach
+
+**Verdict**: Interesting but unproven
+
+### Recommended Approach for Optimized AI
+
+**For your project, use a hybrid approach:**
+
+1. **Root CLAUDE.md** (< 200 lines): Core principles only
+2. **Skills** (not subdirectory CLAUDE.md): Domain-specific patterns
+3. **Agents**: Complex workflows
+4. **@imports**: For existing docs (README, architecture, etc.)
+
+**Example structure:**
+```
+/project/
+├── CLAUDE.md                    # Core (200 lines, ~500 tokens)
+│   ├── @README.md               # Import existing docs
+│   ├── @.plan/initial-design/CORE-PRINCIPLES.md
+│   └── Core instructions
+│
+├── .claude/
+│   ├── skills/
+│   │   ├── firebase/
+│   │   │   ├── auth.skill       # Instead of lib/firebase/CLAUDE.md
+│   │   │   └── firestore.skill  # Instead of lib/firebase/db/CLAUDE.md
+│   │   └── patterns/
+│   │       └── testing.skill    # Instead of tests/CLAUDE.md
+│   │
+│   └── agents/
+│       ├── planner.agent
+│       └── implementer.agent
+│
+└── .ai-knowledge/
+    └── patterns.json            # Learned patterns
+```
+
+---
+
+## Part 15: Bug Tracking & TODO
+
+### Known Bugs with GitHub Issues
+
+**Track these issues - they affect your architecture decisions:**
+
+| Issue # | Title | Impact | Workaround | Status |
+|---------|-------|--------|------------|--------|
+| [#2571](https://github.com/anthropics/claude-code/issues/2571) | CLAUDE.md in subdirectories not loaded | HIGH | Use Skills instead | Open |
+| [#3529](https://github.com/anthropics/claude-code/issues/3529) | Subfolder CLAUDE.md ignored | HIGH | Use Skills instead | Open |
+| [#4275](https://github.com/anthropics/claude-code/issues/4275) | Memory system should discover subdirectories | HIGH | Use Skills instead | Open |
+| [#4754](https://github.com/anthropics/claude-code/issues/4754) | Relative imports from user CLAUDE.md fail | MEDIUM | Use absolute paths | Open |
+| [#5502](https://github.com/anthropics/claude-code/issues/5502) | System prompt adherence issues | MEDIUM | Use emphasis keywords | Open |
+| [#2954](https://github.com/anthropics/claude-code/issues/2954) | Context persistence across sessions | MEDIUM | Document critical rules | Open |
+| [#722](https://github.com/anthropics/claude-code/issues/722) | Documentation inconsistent | LOW | Rely on testing | Open |
+| [#2901](https://github.com/anthropics/claude-code/issues/2901) | Violates explicit instructions | MEDIUM | Use strong language | Open |
+
+### Revisit Schedule
+
+**Add to your project's maintenance tasks:**
+
+```markdown
+## TODO: Review Claude Code Bug Status
+
+**Frequency**: Quarterly or when Claude Code releases major updates
+
+**Tickets to check:**
+- [ ] #2571 - Subdirectory loading
+- [ ] #3529 - Subfolder CLAUDE.md
+- [ ] #4275 - Memory system subdirectories
+- [ ] #4754 - Relative path imports
+
+**When a bug is fixed:**
+1. Update this research document (research/claude/CLAUDE.md)
+2. Re-evaluate workarounds - can we simplify?
+3. Run validation experiments with new functionality
+4. Update .claude/ structure if beneficial
+5. Document changes in .ai-knowledge/
+
+**How to check:**
+- Visit: https://github.com/anthropics/claude-code/issues
+- Filter by issue numbers
+- Check status and recent comments
+- Test functionality if closed
+```
+
+### Workaround Deprecation Strategy
+
+**When subdirectory loading is fixed:**
+
+1. **Assess impact**:
+   - Does the fix work reliably?
+   - Does it introduce new issues?
+   - Is it better than Skills approach?
+
+2. **Compare approaches**:
+   ```
+   Option A: Keep Skills (proven, efficient)
+   Option B: Move to subdirectory CLAUDE.md (native support)
+   Option C: Hybrid approach
+   ```
+
+3. **Run experiments**:
+   - Measure token usage: Skills vs subdirectory CLAUDE.md
+   - Test reliability: Does subdirectory loading work 100%?
+   - Evaluate DX: Which is easier for your team?
+
+4. **Make data-driven decision**:
+   - Skills may STILL be better even when bug is fixed
+   - Progressive disclosure is inherently more efficient
+   - Don't migrate just because the feature works
+
+### Feature Request to Watch
+
+**Issue #3146**: Configure additional directories via settings files
+
+**Proposed feature:**
+```json
+{
+  "directories": [
+    {
+      "path": "lib/auth",
+      "readClaudeMd": true
+    },
+    {
+      "path": "lib/db",
+      "readClaudeMd": true
+    }
+  ]
+}
+```
+
+**If implemented:**
+- Would allow explicit control over subdirectory loading
+- Could enable selective subdirectory CLAUDE.md inclusion
+- Re-evaluate Skills vs subdirectory approach
+
+---
+
+## Part 16: Quick Reference Card
+
+### Path Import Syntax
+
+```markdown
+# In any CLAUDE.md file:
+
+@README.md                               # Project root file
+@docs/architecture.md                    # Project subdirectory
+@.plan/initial-design/CORE-PRINCIPLES.md # Nested project path
+@~/.claude/personal-prefs.md             # User home directory
+```
+
+### Subdirectory Bug Status
+
+```
+✅ Works: Parent directory CLAUDE.md files (recursive up)
+❌ Broken: Subdirectory CLAUDE.md files (doesn't load)
+✅ Workaround: Use Skills instead of subdirectory CLAUDE.md
+📅 TODO: Check issues #2571, #3529, #4275 quarterly
+```
+
+### Decision Tree: Where to Put Instructions?
+
+```
+Is it core to ALL work?
+├─ YES → CLAUDE.md (root)
+└─ NO ──┐
+        │
+        Is it domain-specific (auth, db, API)?
+        ├─ YES → .claude/skills/[domain]/SKILL.md
+        └─ NO ──┐
+                │
+                Is it a complex multi-step workflow?
+                ├─ YES → .claude/agents/[workflow].agent
+                └─ NO ──┐
+                        │
+                        Is it learned from experience?
+                        ├─ YES → .ai-knowledge/patterns.json
+                        └─ NO ──┐
+                                │
+                                Is it existing documentation?
+                                ├─ YES → Keep as-is, @import in CLAUDE.md
+                                └─ NO → Maybe you don't need it?
+```
+
+### Token Budget Quick Math
+
+```
+CLAUDE.md (root):           ~500 tokens (always loaded)
+Each @import:               +full file size (always loaded)
+Each skill (inactive):      ~40 tokens (just metadata)
+Each skill (active):        ~1,500 tokens (when loaded)
+Each agent:                 Fresh context (isolated)
+
+Example session:
+- Root CLAUDE.md:           500 tokens
+- 10 skills (inactive):     400 tokens
+- 2 skills loaded:          3,000 tokens
+- Total:                    3,900 tokens
+
+vs Monolithic:
+- Single CLAUDE.md:         5,000 tokens (all upfront)
+
+Savings: 22% even with 2 skills loaded
+```
+
+---
+
+**Document Version**: 1.1
 **Last Updated**: 2025-11-03
-**Next Review**: After Phase 1 validation experiments
+**Added in v1.1**: Path clarifications, workarounds, bug tracking, revisit schedule
+**Next Review**: After Phase 1 validation experiments OR quarterly bug check
 **Status**: Ready for implementation and validation
