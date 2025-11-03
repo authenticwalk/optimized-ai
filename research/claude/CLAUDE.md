@@ -1,0 +1,932 @@
+# CLAUDE.md Research & Best Practices
+
+**Research Date**: 2025-11-03
+**Focus**: Comprehensive analysis of CLAUDE.md files aligned with MINIMIZE and VALIDATE principles
+
+---
+
+## Executive Summary
+
+### Key Findings
+
+1. **CLAUDE.md should be < 5,000 tokens** (official recommendation)
+2. **Skills are more efficient**: Each skill uses only 30-50 tokens until loaded, vs CLAUDE.md which is loaded in full at session start
+3. **Subdirectory loading is BUGGY**: Despite documentation, subdirectory CLAUDE.md files don't load as expected
+4. **Context trimming risk**: CLAUDE.md can be lost during /compact operations
+5. **Progressive disclosure is key**: Use Skills and Agents for on-demand loading instead of monolithic CLAUDE.md
+
+### Alignment with MINIMIZE Principle
+
+The research validates your core principle: **keep CLAUDE.md tiny and use Skills/Agents for context-specific instructions**. Every line in CLAUDE.md consumes tokens at session start, while Skills only load when needed.
+
+### Critical Validation Required
+
+Before implementing any CLAUDE.md strategy, you MUST validate through experiments:
+- Does a 200-line CLAUDE.md perform better than a 50-line core + skills?
+- At what point does CLAUDE.md size impact performance?
+- How does context compaction affect CLAUDE.md adherence?
+
+---
+
+## Part 1: How CLAUDE.md Actually Works
+
+### File Discovery Mechanism
+
+**From official documentation and testing:**
+
+1. **Startup behavior**: Claude Code recursively searches UP from current working directory (CWD) to find CLAUDE.md files
+2. **Hierarchy**: Loads files from root → current directory
+3. **Multiple files**: Can load multiple CLAUDE.md files from parent directories
+
+**Example directory structure:**
+```
+/project/
+├── CLAUDE.md                    # Always loaded (root)
+├── src/
+│   ├── CLAUDE.md                # Loaded when in /project/src/
+│   └── auth/
+│       └── CLAUDE.md            # Should load when in /project/src/auth/
+```
+
+### Context Injection Timing
+
+**When CLAUDE.md is loaded:**
+- ✅ At session start (automatic)
+- ✅ When launching from a directory
+- ❌ NOT dynamically when editing files in subdirectories (BUG)
+
+**Where it lives in context:**
+- Part of the system prompt/memory
+- Supposed to persist through conversation
+- **WARNING**: May be lost during /compact operations
+
+### Import System
+
+**CLAUDE.md supports imports:**
+```markdown
+@path/to/additional-context.md
+@~/.claude/my-global-instructions.md
+```
+
+**Import rules:**
+- Relative and absolute paths supported
+- Home directory access via `@~/`
+- Recursive imports allowed (max depth: 5)
+- Imports inside code blocks are ignored
+
+**Token implication**: Every imported file adds to your baseline token usage!
+
+---
+
+## Part 2: Critical Bugs & Limitations
+
+### 🚨 Subdirectory Loading Bug
+
+**What the documentation says:**
+> "When working in /project/src/credits/ or reading files in that directory, Claude should load /project/CLAUDE.md (recursively up) and /project/src/credits/CLAUDE.md (current directory)"
+
+**What actually happens:**
+- ✅ Loads /project/CLAUDE.md (parent directories work)
+- ❌ Does NOT load /project/src/credits/CLAUDE.md (subdirectory ignored)
+- ❌ Requires manual attachment or explicit reference
+
+**GitHub Issues:**
+- [#2571](https://github.com/anthropics/claude-code/issues/2571): Subdirectories not loading
+- [#3529](https://github.com/anthropics/claude-code/issues/3529): Subfolder CLAUDE.md ignored
+- [#4275](https://github.com/anthropics/claude-code/issues/4275): Memory system should discover subdirectories
+
+**Workaround**: Use Skills instead of subdirectory CLAUDE.md files
+
+### 🚨 Context Compaction Loses Instructions
+
+**Reported behavior:**
+- CLAUDE.md instructions appear to be lost during /compact operations
+- System follows behavioral patterns from training but forgets specific instructions
+- Context loss between sessions forces re-establishing project context
+
+**GitHub Issues:**
+- [#5502](https://github.com/anthropics/claude-code/issues/5502): System prompt adherence
+- [#2954](https://github.com/anthropics/claude-code/issues/2954): Context persistence disruption
+
+**Implication**: You cannot rely on CLAUDE.md to persist indefinitely in long sessions
+
+### 🚨 Optional Guidance Problem
+
+**Reported behavior:**
+- Claude treats CLAUDE.md as "optional guidance" rather than strict requirements
+- Doesn't consistently follow CLAUDE.md without explicit user prompting
+- Loses context when starting new instances
+
+**Workaround**: Use emphasis ("IMPORTANT", "YOU MUST") in CLAUDE.md, but this adds token bloat
+
+---
+
+## Part 3: Real-World Examples
+
+### Example 1: Chorus App (1,200 words, ~1,600 tokens)
+
+**Source**: [GitHub Gist by cbh123](https://gist.github.com/cbh123/75dcd353b354b1eb3398c6d2781a502f)
+
+**Structure:**
+```markdown
+# What is Chorus?
+- Product description
+- Tech stack: Tauri, React, TypeScript, TanStack Query, SQLite
+
+# Workflow
+- Setup → Development → Review → Issue resolution
+- Emphasis: "Commit often"
+
+# Project Structure
+- UI layer, Core layer, Tauri layer
+
+# Important Files
+- Key file paths with brief descriptions
+
+# Data Model
+- Change procedures
+
+# Coding Style
+- Standards and constraints
+```
+
+**Analysis:**
+- ✅ Well-organized with clear sections
+- ✅ Scannable with hierarchical headings
+- ❌ At 1,600 tokens, this is 32% of recommended 5k limit for ONE file
+- ❌ Includes information that could be in separate docs
+
+**Alignment with MINIMIZE**: Could be reduced to 400 tokens with:
+- Core principles only in CLAUDE.md
+- Project structure → separate doc
+- Workflow details → Skills or slash commands
+
+### Example 2: Next.js Stack Guide
+
+**Source**: [GitHub Gist by gregsantos](https://gist.github.com/gregsantos/2fc7d7551631b809efa18a0bc4debd2a)
+
+**Content type**: Comprehensive guide for TypeScript + Next.js + Tailwind + shadcn + React Query
+
+**Analysis:**
+- Likely similar length to Chorus example
+- Stack-specific patterns and conventions
+- Strong candidate for Skills-based approach
+
+**Better approach**:
+```
+CLAUDE.md (core): 200 tokens
+.claude/skills/nextjs/SKILL.md: 1,000 tokens (loaded on-demand)
+.claude/skills/shadcn/SKILL.md: 500 tokens (loaded on-demand)
+```
+
+### Example 3: Claude-Flow Templates
+
+**Source**: [ruvnet/claude-flow](https://github.com/ruvnet/claude-flow/wiki/CLAUDE-MD-Templates)
+
+**Key insight**: "CLAUDE.md is the heart of Claude-Flow configuration"
+
+**Provides specialized templates for**:
+- Different project types
+- Different tech stacks
+- Different workflows
+
+**Analysis**: Template approach shows ONE SIZE DOES NOT FIT ALL
+- ✅ Validates the need for project-specific CLAUDE.md
+- ❌ Large templates contradict minimalism
+- ✅ Could be adapted to Skills-based architecture
+
+---
+
+## Part 4: Best Practices for Minimal CLAUDE.md
+
+### Official Anthropic Recommendations
+
+**From official docs:**
+
+1. **No required format** - keep concise and human-readable
+2. **Recommended sections:**
+   - Common bash commands
+   - Core files and utilities
+   - Code style guidelines
+   - Testing instructions
+   - Repository etiquette (branch naming, merge strategies)
+
+3. **Refinement is critical:**
+   - "A common mistake is adding extensive content without iterating on its effectiveness"
+   - Use the `#` key to add instructions that Claude auto-incorporates
+   - Periodically run through prompt improvement tools
+   - Include changes in commits for team benefit
+
+4. **Use emphasis for critical rules:**
+   - "IMPORTANT", "YOU MUST", etc.
+   - But beware: this adds tokens!
+
+### Community Best Practices
+
+**From multiple sources:**
+
+1. **Keep under 5,000 tokens** (absolute max)
+2. **Target 2,000 tokens** for optimal balance
+3. **Link to external docs** for detailed information
+4. **Specify boundaries**: Which files Claude can read, which to ignore
+5. **Write like a spec**: Clear, direct, structured
+6. **Use XML tags for clarity** (but adds tokens)
+7. **Bullet points over prose**
+8. **Regular maintenance**: Review and update as project evolves
+
+### The 50-Line Challenge (Your Goal)
+
+**Aligned with CORE-PRINCIPLES.md: < 200 lines CLAUDE.md**
+
+**What to include in core CLAUDE.md:**
+```markdown
+# Project: [Name]
+
+## Stack
+- Language: TypeScript
+- Infrastructure: Firebase
+- Framework: Svelte
+
+## Core Principles
+- No React/Tailwind
+- Separate design from structure
+- Refactor on reuse
+- Minimal boilerplate
+
+## Structure
+- lib/ - Core logic
+- routes/ - Pages
+- .plan/ - Git-ignored workspace
+
+## Critical Rules
+- Check .ai-knowledge/ before starting tasks
+- Work in .plan/ folder
+- Self-evaluate before PRs
+- Never merge to main
+```
+
+**Estimated tokens**: ~200 tokens
+
+**Everything else goes into:**
+- `.claude/skills/` - Domain-specific patterns
+- `.ai-knowledge/` - Learned patterns
+- `docs/` - Reference documentation (loaded on-demand with @)
+
+---
+
+## Part 5: Skills System Deep Dive
+
+### Why Skills Beat Monolithic CLAUDE.md
+
+**Token efficiency comparison:**
+
+| Approach | Baseline Tokens | Per-Task Tokens | Total (10 tasks) |
+|----------|----------------|-----------------|------------------|
+| Monolithic CLAUDE.md (5,000 tokens) | 5,000 | 0 | 50,000 |
+| Core CLAUDE.md (500 tokens) + Skills | 500 | +1,500/task | 15,500 |
+| **Savings** | | | **69%** |
+
+**Why this works:**
+- Skills only load when needed
+- Each skill: 30-50 tokens until loaded
+- Full content: ~1,500 tokens when active
+- Most tasks only need 1-2 skills
+
+### How Skills Work Internally
+
+**Progressive disclosure mechanism:**
+
+1. **Metadata phase**: All skill names + descriptions in system prompt (~30-50 tokens each)
+2. **Selection phase**: Claude reads descriptions, decides which skill to invoke
+3. **Loading phase**: Full SKILL.md injected into context (~1,500 tokens)
+4. **Execution phase**: Claude follows skill instructions
+5. **Resource phase**: Scripts and references loaded only if needed
+
+**Technical architecture:**
+- Skills are a meta-tool, not executable code
+- Appears in `tools` array alongside Read, Write, Bash
+- Two-message injection:
+  - Message 1 (visible): `<command-message>The "pdf" skill is loading</command-message>`
+  - Message 2 (hidden): Full skill prompt with `isMeta: true`
+
+### Skills Directory Structure
+
+**Location:**
+- Personal: `~/.claude/skills/` (available across all projects)
+- Project: `.claude/skills/` (checked into git, team-shared)
+
+**Basic structure:**
+```
+.claude/skills/
+└── firebase-auth/
+    ├── SKILL.md              # Core prompt (500-5,000 words)
+    ├── scripts/              # Python/Bash automation
+    ├── references/           # Docs loaded into context
+    └── assets/               # Templates, referenced by path
+```
+
+**SKILL.md format:**
+```markdown
+---
+name: firebase-auth
+description: Guides Firebase authentication implementation. Use when implementing auth, login, or user management.
+allowed-tools: Read,Write,Bash(npm:*),Bash(git:*)
+model: sonnet
+---
+
+# Firebase Authentication Implementation
+
+## When to Use
+- Implementing user authentication
+- Setting up Firebase Auth
+- Managing user sessions
+
+## Instructions
+1. Install Firebase SDK
+2. Initialize Firebase config
+3. Implement auth methods
+...
+
+## Examples
+[Include code examples]
+```
+
+### Skills Best Practices
+
+**From official sources and community:**
+
+1. **Keep skills focused**: One capability per skill
+2. **Write specific descriptions**: Include activation triggers
+3. **Separate supporting materials**: Don't bloat SKILL.md
+4. **Use allowed-tools**: Restrict tool access for safety
+5. **Target 500-2,000 words**: Sweet spot for effectiveness
+6. **Include examples**: Show expected patterns
+7. **Use imperative language**: "Extract data..." not "You should extract..."
+8. **Reference with {baseDir}**: Never hardcode paths
+
+### Token Budget Constraints
+
+**15,000-character limit for skill listings:**
+- This is for ALL skill descriptions combined
+- Forces concise descriptions
+- Skills exceeding budget are truncated or excluded
+- Average: ~200 characters per skill = ~75 skills max
+
+---
+
+## Part 6: Agents System Deep Dive
+
+### Agents vs Skills
+
+| Feature | Skills | Agents |
+|---------|--------|--------|
+| **Purpose** | Teach HOW to do tasks | Delegate WHO does tasks |
+| **Context** | Modifies main agent context | Fresh, isolated context |
+| **Token impact** | Adds to main conversation | Separate conversation |
+| **Best for** | Repeatable patterns | Complex multi-step tasks |
+| **Execution** | Main agent follows skill instructions | Subagent executes independently |
+
+### When to Use Agents
+
+**Use subagents for:**
+- Complex multi-step tasks
+- Tasks requiring different skills/context
+- When main context is getting bloated
+- Tasks with clear handoff points
+- When parallelization is possible
+
+**Example workflow:**
+```
+Main Agent (PM):
+  → Reads task
+  → Analyzes requirements
+
+  → Spawns: Planner Subagent
+      Fresh context + planning.skill
+      Creates detailed plan
+      Returns plan
+
+  → Spawns: Implementer Subagent
+      Fresh context + relevant implementation skills
+      Writes code
+      Returns code
+
+  → Spawns: Reviewer Subagent
+      Fresh context + review.skill
+      Reviews code
+      Returns feedback
+
+  → Integrates results
+```
+
+### Agents Directory Structure
+
+**Location:**
+- Personal: `~/.claude/agents/`
+- Project: `.claude/agents/` (takes precedence, versioned)
+
+**File format:**
+```markdown
+---
+name: laravel-planner
+description: Senior Laravel architect who creates implementation plans. Use when planning Laravel features.
+tools: Read,Grep,Glob
+model: sonnet
+---
+
+You are a Senior Laravel architect specializing in planning implementations.
+
+## Your Role
+- Analyze requirements
+- Create step-by-step implementation plans
+- Consider Laravel best practices
+- Identify potential issues
+
+## Output Format
+Provide a numbered list of implementation steps with:
+1. File to create/modify
+2. Specific changes needed
+3. Testing considerations
+
+## Constraints
+- Do NOT edit files (you're a planner, not implementer)
+- Do NOT run commands
+- Focus on planning only
+```
+
+### Agent Configuration Options
+
+**Model selection:**
+- `model: sonnet` - Use Sonnet (fast, cheaper)
+- `model: opus` - Use Opus (highest quality)
+- `model: haiku` - Use Haiku (fastest, cheapest)
+- `model: inherit` - Use same model as main conversation
+- Omit field: Use default model
+
+**Tools:**
+- Omit field: Inherit all tools (default)
+- Specify: `tools: Read,Write,Grep` (restrict tools)
+
+### Community Agent Collections
+
+**Available resources:**
+- 100+ production-ready agents (0xfurai/claude-code-subagents)
+- 60+ specialized agents (lst97/claude-code-sub-agents)
+- Organized by domain: Development, Language, Infrastructure, Business, Marketing
+
+---
+
+## Part 7: Recommendations for Optimized AI Project
+
+### Core Architecture
+
+**Based on CORE-PRINCIPLES.md goals:**
+
+```
+Core (Always Loaded):
+├── CLAUDE.md (< 200 lines, ~500 tokens)
+│   ├── Project overview
+│   ├── Tech stack
+│   ├── Core principles
+│   └── Critical rules
+│
+Skills (Load on-demand):
+├── .claude/skills/firebase/
+│   ├── auth.skill
+│   ├── firestore.skill
+│   └── functions.skill
+├── .claude/skills/patterns/
+│   ├── testing.skill
+│   ├── refactoring.skill
+│   └── performance.skill
+└── .claude/skills/frameworks/
+    ├── svelte.skill
+    └── ionic.skill
+│
+Agents (For complex tasks):
+├── .claude/agents/
+│   ├── planner.agent
+│   ├── implementer.agent
+│   ├── reviewer.agent
+│   └── learner.agent
+│
+Knowledge (Learned patterns):
+└── .ai-knowledge/
+    ├── patterns.json
+    ├── anti-patterns.json
+    ├── skill-usage.json
+    └── optimization-metrics.json
+```
+
+### Minimal CLAUDE.md Template
+
+**For Optimized AI project specifically:**
+
+```markdown
+# Optimized AI - Self-Learning Coding Assistant
+
+## Stack
+- **Language**: TypeScript (strict mode)
+- **Infrastructure**: Firebase, Supabase
+- **Frameworks**: Svelte, HTMX, Ionic+Angular
+- **Testing**: Vitest
+- **Runtime**: Node.js, Deno
+
+## Core Principles
+1. **MINIMIZE**: < 250 line configs, prove every line's value
+2. **SEPARATE**: Load skills on-demand, use subagents for isolation
+3. **VALIDATE**: Every claim backed by experiments
+4. **LEARN**: System optimizes itself over time
+
+## Project Structure
+- `.plan/` - Current work (git-ignored)
+- `.ai-knowledge/` - Learned patterns (git-tracked)
+- `.claude/` - Skills and agents
+- `research/` - Experimental findings
+
+## Critical Rules
+- ✅ Check `.ai-knowledge/` before starting any task
+- ✅ Work in `.plan/` folder, keep workspace clean
+- ✅ Use IDE operations over manual refactoring
+- ✅ Self-evaluate before creating PRs
+- ✅ Only commit passing code
+- ❌ NEVER merge to main automatically
+- ❌ NEVER use React or Tailwind
+- ❌ NEVER spin without detecting and switching approaches
+
+## Workflow
+1. Read task from `.plan/current-task.md`
+2. Check `.ai-knowledge/patterns.json` for similar tasks
+3. Load relevant skills (e.g., `@firebase` for auth work)
+4. Create plan in `.plan/approach.md`
+5. Implement following learned patterns
+6. Self-evaluate continuously
+7. Create PR when all checks pass
+8. Update `.ai-knowledge/` with learnings
+
+## References
+- Core principles: @.plan/initial-design/CORE-PRINCIPLES.md
+- Validation framework: @.plan/initial-design/EXPERIMENTAL-VALIDATION.md
+- Global learnings: @~/.optimized-ai/global-knowledge/patterns.md
+```
+
+**Token count**: ~650 tokens (well under 5k limit)
+
+### Skills to Create
+
+**Priority 1 (Core Patterns):**
+```
+.claude/skills/
+├── firebase/
+│   ├── auth.skill          - Firebase authentication patterns
+│   ├── firestore.skill     - Query patterns, indexing
+│   └── security-rules.skill - Security rules validation
+├── supabase/
+│   ├── rls.skill           - Row Level Security patterns
+│   └── queries.skill       - Supabase query optimization
+├── testing/
+│   ├── unit.skill          - Unit test patterns
+│   ├── integration.skill   - Integration test patterns
+│   └── edge-cases.skill    - Edge case identification
+└── patterns/
+    ├── refactoring.skill   - When and how to refactor
+    ├── performance.skill   - Performance optimization
+    └── spin-detection.skill - Self-monitoring for spinning
+```
+
+**Priority 2 (Framework Specific):**
+```
+.claude/skills/
+├── svelte/
+│   ├── components.skill    - Svelte component patterns
+│   └── stores.skill        - Svelte store management
+├── htmx/
+│   └── interactions.skill  - HTMX patterns
+└── typescript/
+    ├── types.skill         - TypeScript type patterns
+    └── strict-mode.skill   - Strict mode best practices
+```
+
+### Agents to Create
+
+**Workflow agents:**
+```
+.claude/agents/
+├── planner.agent           - Breaks down tasks into steps
+├── implementer.agent       - Writes code following patterns
+├── tester.agent            - Creates and runs tests
+├── reviewer.agent          - Self-reviews code quality
+├── cleaner.agent           - Cleans up workspace
+└── learner.agent           - Updates knowledge base
+```
+
+### Migration Strategy
+
+**Phase 0: Baseline Measurement**
+1. Create minimal CLAUDE.md (200 lines)
+2. Run 10 test scenarios
+3. Measure: tokens, time, quality, spin rate
+4. Document baseline in `.ai-knowledge/metrics.json`
+
+**Phase 1: Skills Implementation**
+1. Create 3 core skills (firebase-auth, testing, refactoring)
+2. Run same 10 scenarios with skills
+3. Compare: tokens, time, quality, spin rate
+4. VALIDATE: Does skills approach improve metrics?
+
+**Phase 2: Agents Implementation**
+1. Create 3 core agents (planner, implementer, reviewer)
+2. Run 5 complex multi-step scenarios
+3. Compare: quality, context pollution, clarity
+4. VALIDATE: Do agents improve complex task handling?
+
+**Phase 3: Optimization**
+1. Track skill usage frequency
+2. Merge rarely-used skills
+3. Split frequently-used skills if they're bloated
+4. Remove unused instructions from CLAUDE.md
+5. VALIDATE: Measure improvement
+
+---
+
+## Part 8: Validation Experiments
+
+### Experiment 1: Monolithic vs Modular
+
+**Hypothesis**: "Minimal CLAUDE.md + Skills reduces token usage by 60% without degrading quality"
+
+**Design:**
+- Control: 500-line CLAUDE.md with all instructions
+- Treatment: 50-line CLAUDE.md + 5 skills
+- Scenarios: 10 tasks requiring different skills
+- Metrics: tokens/task, time/task, quality score, spin rate
+
+**Success criteria:**
+- ✅ 60%+ token reduction
+- ✅ Equal or better quality
+- ✅ No increase in spin rate
+- ✅ Same or faster completion time
+
+**If fails**: Analyze which skills are loaded too often (merge into core)
+
+### Experiment 2: Context Persistence
+
+**Hypothesis**: "CLAUDE.md instructions persist through /compact operations"
+
+**Design:**
+- Create CLAUDE.md with 10 specific instructions
+- Run long task requiring /compact
+- After compaction, test adherence to each instruction
+- Measure: How many instructions are still followed?
+
+**Success criteria:**
+- ✅ 100% instruction adherence after compaction
+- ✅ No degradation in quality
+
+**If fails**: Document in knowledge base, explore alternatives (Skills? Hooks?)
+
+### Experiment 3: Subdirectory Loading
+
+**Hypothesis**: "Subdirectory CLAUDE.md files load when editing files in those directories"
+
+**Design:**
+- Create structure:
+  ```
+  /project/CLAUDE.md (instruction A)
+  /project/lib/CLAUDE.md (instruction B)
+  /project/lib/auth/CLAUDE.md (instruction C)
+  ```
+- Test: Edit file in /project/lib/auth/
+- Verify: Which instructions does Claude follow?
+
+**Expected result (per docs)**: All three instructions
+**Actual result (per bugs)**: Only instruction A
+
+**Action**: Document bug, use Skills instead of subdirectory CLAUDE.md
+
+### Experiment 4: Skill Loading Overhead
+
+**Hypothesis**: "Skill loading adds < 2s overhead per invocation"
+
+**Design:**
+- Measure time to:
+  1. Start task with monolithic CLAUDE.md
+  2. Start task with Skills (measure from invocation to loaded)
+- Run 20 times each
+- Statistical comparison
+
+**Success criteria:**
+- ✅ Skill loading adds < 2s
+- ✅ Perception: Not noticeably slower
+
+**If fails**: Investigate caching, pre-loading strategies
+
+### Experiment 5: Optimal CLAUDE.md Size
+
+**Hypothesis**: "50-line CLAUDE.md is sufficient for core instructions"
+
+**Design:**
+- Test sizes: 25, 50, 100, 200, 500 lines
+- Same 10 test scenarios for each
+- Measure: Quality, tokens, adherence
+
+**Find the knee in the curve**: Where does adding more lines stop improving quality?
+
+**Action**: Set that as your target size
+
+---
+
+## Part 9: Critical Issues Summary
+
+### ⚠️ Subdirectory Loading Doesn't Work
+
+**Status**: Known bug, multiple open issues
+**Impact**: Cannot organize CLAUDE.md files by directory
+**Workaround**: Use Skills instead
+**Validation**: Experiment 3 (above)
+
+### ⚠️ Context Compaction Loses Instructions
+
+**Status**: Reported issue
+**Impact**: Long sessions may lose CLAUDE.md adherence
+**Workaround**: Periodically remind Claude of critical rules
+**Validation**: Experiment 2 (above)
+
+### ⚠️ Optional Guidance Problem
+
+**Status**: Behavioral issue
+**Impact**: Claude treats CLAUDE.md as suggestions, not requirements
+**Workaround**: Use strong emphasis ("MUST", "NEVER")
+**Cost**: Additional tokens for emphasis
+
+### ⚠️ Token Budget Unknown
+
+**Status**: No official documentation on limits
+**Impact**: Don't know exact token count for CLAUDE.md
+**Recommendation**: Assume ~4 tokens per word, measure with /context command
+
+---
+
+## Part 10: Action Items for Optimized AI
+
+### Immediate Actions
+
+1. **Create minimal CLAUDE.md** (< 200 lines)
+   - Use template from Part 7
+   - Focus on core principles only
+   - Link to external docs with @imports
+
+2. **DO NOT create subdirectory CLAUDE.md files**
+   - Subdirectory loading is broken
+   - Use Skills instead
+
+3. **Set up Skills directory structure**
+   - Create `.claude/skills/`
+   - Plan out 8-10 core skills
+   - Start with 3 highest-priority skills
+
+4. **Set up Agents directory structure**
+   - Create `.claude/agents/`
+   - Plan out 6 workflow agents
+   - Start with planner and implementer
+
+5. **Create baseline measurement**
+   - Before implementing Skills/Agents
+   - Measure current performance
+   - Document in `.ai-knowledge/metrics.json`
+
+### Validation Experiments to Run
+
+**Week 1-2:**
+- Experiment 1: Monolithic vs Modular
+- Experiment 3: Subdirectory Loading (confirm bug)
+- Experiment 5: Optimal CLAUDE.md Size
+
+**Week 3-4:**
+- Experiment 2: Context Persistence
+- Experiment 4: Skill Loading Overhead
+
+**Week 5-6:**
+- Custom experiments based on your specific workflow
+- Measure learned patterns effectiveness
+
+### Research Gaps to Fill
+
+1. **Token counting**: Exact formula for CLAUDE.md token usage
+2. **Import performance**: Do imports slow session startup?
+3. **Skill selection accuracy**: How often does Claude choose the right skill?
+4. **Agent overhead**: Cost/benefit of agent spawning
+5. **Knowledge base integration**: How to surface learnings to Claude
+
+---
+
+## Part 11: Resources & References
+
+### Official Documentation
+
+- [Claude Code Settings](https://docs.claude.com/en/docs/claude-code/settings.md)
+- [Claude Code Memory](https://docs.claude.com/en/docs/claude-code/memory.md)
+- [Agent Skills](https://docs.claude.com/en/docs/claude-code/skills.md)
+- [Subagents](https://docs.claude.com/en/docs/claude-code/sub-agents.md)
+- [Best Practices](https://www.anthropic.com/engineering/claude-code-best-practices)
+
+### Example Repositories
+
+**CLAUDE.md Examples:**
+- [ArthurClune/claude-md-examples](https://github.com/ArthurClune/claude-md-examples)
+- [hesreallyhim/awesome-claude-code](https://github.com/hesreallyhim/awesome-claude-code)
+- [ruvnet/claude-flow](https://github.com/ruvnet/claude-flow/wiki/CLAUDE-MD-Templates)
+
+**Skills Collections:**
+- [anthropics/skills](https://github.com/anthropics/skills) (official examples)
+- [travisvn/awesome-claude-skills](https://github.com/travisvn/awesome-claude-skills)
+
+**Agents Collections:**
+- [0xfurai/claude-code-subagents](https://github.com/0xfurai/claude-code-subagents) (100+ agents)
+- [lst97/claude-code-sub-agents](https://github.com/lst97/claude-code-sub-agents) (60+ agents)
+- [wshobson/agents](https://github.com/wshobson/agents)
+
+**Best Practices Guides:**
+- [awattar/claude-code-best-practices](https://github.com/awattar/claude-code-best-practices)
+- [zebbern/claude-code-guide](https://github.com/zebbern/claude-code-guide)
+- [wesammustafa/Claude-Code-Everything](https://github.com/wesammustafa/Claude-Code-Everything-You-Need-to-Know)
+
+### GitHub Issues (Known Bugs)
+
+- [#2571](https://github.com/anthropics/claude-code/issues/2571): Subdirectories not loading
+- [#3529](https://github.com/anthropics/claude-code/issues/3529): Subfolder CLAUDE.md ignored
+- [#4275](https://github.com/anthropics/claude-code/issues/4275): Memory system subdirectories
+- [#5502](https://github.com/anthropics/claude-code/issues/5502): System prompt adherence
+- [#2954](https://github.com/anthropics/claude-code/issues/2954): Context persistence
+- [#7533](https://github.com/anthropics/claude-code/issues/7533): Context preservation priority
+
+### Technical Deep Dives
+
+- [Claude Skills: First Principles](https://leehanchung.github.io/blogs/2025/10/26/claude-skills-deep-dive/)
+- [Inside Claude Code Skills](https://mikhail.io/2025/10/claude-code-skills/)
+- [Managing Context](https://www.cometapi.com/managing-claude-codes-context/)
+- [Token Optimization](https://gist.github.com/artemgetmann/74f28d2958b53baf50597b669d4bce43)
+
+---
+
+## Part 12: Conclusion
+
+### Key Takeaways
+
+1. **CLAUDE.md should be minimal**: < 5,000 tokens absolute max, target < 1,000 tokens
+2. **Skills are more efficient**: 30-50 tokens until loaded vs full CLAUDE.md at startup
+3. **Subdirectory loading is broken**: Use Skills instead of subdirectory organization
+4. **Context compaction risks losing instructions**: Design for this limitation
+5. **Progressive disclosure is the winning strategy**: Load only what's needed, when it's needed
+
+### Alignment with MINIMIZE Principle
+
+Your goal of **< 200 line CLAUDE.md** is well-supported by:
+- Official recommendation: "keep concise"
+- Community consensus: < 5k tokens (your target is ~500 tokens)
+- Skills architecture: Enables separation of concerns
+- Real-world pain: Large CLAUDE.md files cause token bloat
+
+### Alignment with VALIDATE Principle
+
+Every recommendation in this document must be validated:
+- ✅ Run Experiment 1: Measure actual token savings
+- ✅ Run Experiment 2: Verify context persistence
+- ✅ Run Experiment 3: Confirm subdirectory bug
+- ✅ Run Experiment 5: Find optimal size for YOUR workflow
+
+**Do not assume these findings apply to your specific use case without validation.**
+
+### Next Steps
+
+1. ✅ Read this document thoroughly
+2. ✅ Create minimal CLAUDE.md using template in Part 7
+3. ✅ Set up `.claude/skills/` and `.claude/agents/` directories
+4. ✅ Run baseline measurements (Phase 0)
+5. ✅ Implement Skills (Phase 1)
+6. ✅ Run validation experiments
+7. ✅ Document findings in `.ai-knowledge/`
+8. ✅ Iterate based on data
+
+### Final Recommendation
+
+**For Optimized AI project:**
+
+```
+CLAUDE.md: 50-100 lines core instructions (~200-500 tokens)
+Skills: 8-10 focused skills (~400-500 tokens each when loaded)
+Agents: 6 workflow agents (fresh context per agent)
+Knowledge: .ai-knowledge/ for learned patterns
+
+Expected savings: 60-70% token reduction vs monolithic approach
+Validation required: Yes, through experiments
+```
+
+This architecture aligns perfectly with your MINIMIZE and VALIDATE principles while working within Claude Code's actual capabilities and limitations.
+
+---
+
+**Document Version**: 1.0
+**Last Updated**: 2025-11-03
+**Next Review**: After Phase 1 validation experiments
+**Status**: Ready for implementation and validation
