@@ -254,14 +254,20 @@ For topics needing multiple files:
 
 ## How This Applies to Our Project
 **Alignment with our goals:**
-- Supports our learning principle (`.plan/initial-design/principles/4-learn.md`)
-- Maintains separation via hooks (`.plan/initial-design/principles/2-separate.md`)
-- Low overhead approach (`.plan/initial-design/principles/1-minimize.md`)
+- Reference specific files from `.plan/initial-design/`
+- Show how learnings support our principles
+- Note gaps this research revealed in our plan
 
 **Specific recommendations:**
-1. Implement pre/post hooks for skill execution
-2. Use SQLite for `.ai-knowledge/` storage
-3. Avoid their mistake of over-extraction by filtering relevance
+1. Actionable steps based on research
+2. What to implement first
+3. What to avoid based on mistakes found
+4. Framework/tool recommendations with rationale
+
+## Gaps & Opportunities
+Things not in our original plan that this research suggests we should consider:
+- Gap 1: Description and recommendation
+- Gap 2: Description and recommendation
 ```
 
 ### Individual Deep-Dive Template
@@ -481,18 +487,124 @@ Document:
 - Constraints and how they shaped decisions
 - Values reflected in implementation
 
+## Research Type Examples
+
+### Example 1: Repository Analysis
+```
+User: Research https://github.com/alirezarezvani/claude-code-tresor and put it in research/claude-code-tresor
+
+Compare it to the goals in .plan/initial-design
+
+Focus on learnings and meta patterns. Create a single max 400 line README.md with individual files exploring each element (scoped to one concept like agents).
+
+For learnings, clone to .tmp/claude-code-tresor and look at git log for improvements/mistakes.
+```
+
+**Approach:**
+1. Read `.plan/initial-design/` to understand our goals
+2. Clone repo and read README
+3. Identify 3-5 aspects that align with our goals
+4. Deep-dive each aspect in separate files
+5. Extract git history for evolution insights
+6. Document what we're skipping and why
+
+### Example 2: Documentation + Best Practices Research
+```
+User: Research Claude MCP and put findings in research/claude/mcp
+
+Find all official documentation, then research best practices from repos/websites.
+
+Stay focused on .plan/initial-design goals but also note things I missed that would really help.
+
+Also research the best framework (TypeScript and Python) for building MCP servers - ideally just write the function and wrap with a decorator.
+
+Research future of MCP in Claude Code vs Skills - when to use each.
+```
+
+**Approach:**
+1. Read `.plan/initial-design/` to understand our goals
+2. WebSearch for official Claude MCP documentation
+3. WebFetch key pages from official docs
+4. WebSearch for "claude mcp best practices", "claude mcp examples"
+5. Search GitHub for repos with MCP implementations
+6. Clone 2-3 example repos to `.tmp/`
+7. Compare TypeScript frameworks (FastMCP, official SDK, etc.)
+8. Create comparison files: `framework-typescript.md`, `framework-python.md`
+9. Create analysis: `mcp-vs-skills.md` with pros/cons
+10. Extract patterns into individual files
+
+### Example 3: Multi-Topic Research
+```
+User: Research Claude agents and subagents, put findings in research/claude/subagents
+
+Find official docs + best practices from repos/websites with snippets.
+
+Focus on .plan/initial-design goals but note things I missed that would help.
+```
+
+**Approach:**
+1. Read `.plan/initial-design/` for context
+2. WebSearch official Claude docs on agents/subagents
+3. WebSearch "claude agents best practices", "claude subagents patterns"
+4. Search GitHub for repos using agents effectively
+5. Clone example repos to `.tmp/`
+6. Extract specific patterns into files like:
+   - `pattern-agent-coordination.md`
+   - `pattern-subagent-context-passing.md`
+   - `learning-when-to-use-subagents.md`
+   - `mistake-too-many-agents.md`
+7. Note gaps in our plan that this research reveals
+
 ## Quality Checklist
 
 Before completing research:
 - [ ] README.md is under 400 lines
-- [ ] All significant components have deep-dives
+- [ ] Connected research to our goals in `.plan/initial-design/`
+- [ ] All significant insights have individual deep-dive files
+- [ ] Documented what we skipped and why
 - [ ] Learnings are actionable
-- [ ] Comparison to project goals is clear
 - [ ] Recommendations are specific
 - [ ] Code examples are included where relevant
-- [ ] Git history insights are documented
-- [ ] Meta-patterns are identified
-- [ ] Mistakes and corrections are noted
+- [ ] Git history insights are documented (if repo research)
+- [ ] Best practices from community are captured
+- [ ] Framework comparisons are thorough (if applicable)
+- [ ] Noted gaps/opportunities in our plan
+
+## Web Research Commands
+
+### Finding Official Documentation
+```bash
+# Search for official docs
+WebSearch: "claude mcp official documentation"
+WebSearch: "anthropic mcp documentation"
+WebSearch: "claude code agents documentation"
+
+# Fetch specific pages
+WebFetch: https://docs.anthropic.com/... "Extract information about MCP servers"
+```
+
+### Finding Best Practices
+```bash
+# Search for patterns and examples
+WebSearch: "claude mcp best practices 2024"
+WebSearch: "claude mcp examples github"
+WebSearch: "awesome-claude-mcp"
+WebSearch: "claude agents patterns"
+
+# Search for comparisons
+WebSearch: "fastmcp vs mcp-sdk"
+WebSearch: "when to use mcp vs skills claude"
+```
+
+### Finding Example Code
+```bash
+# Search GitHub
+WebSearch: "site:github.com claude mcp server example"
+WebSearch: "site:github.com claude agents pattern"
+
+# Clone promising repos
+git clone https://github.com/example/mcp-server .tmp/mcp-example
+```
 
 ## Usage Example
 
