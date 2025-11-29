@@ -611,28 +611,162 @@ interface PlanStep {
 
 ## Hook Architecture (Node.js)
 
-Based on patterns from claude-flow and agentic-flow analysis.
+Based on patterns from claude-flow and agentic-flow analysis, plus official Claude Code documentation.
 
-### How Claude Code Hooks Work
+### Claude Code Hook JSON Schemas (Official)
 
-Claude Code hooks receive JSON on stdin with tool information:
+Each hook type receives different JSON on stdin. Here are the complete schemas:
+
+#### PreToolUse Hook
 
 ```json
-// PreToolUse receives:
 {
+  "session_id": "abc123-session-uuid",
+  "transcript_path": "/path/to/.claude/sessions/abc123.json",
   "tool_name": "Bash",
   "tool_input": {
     "command": "rm -rf node_modules"
-  }
-}
-
-// PostToolUse receives:
-{
-  "tool_name": "Bash",
-  "tool_input": { "command": "..." },
-  "tool_output": "..."  // Result of the command
+  },
+  "tool_use_id": "tool_use_abc123"
 }
 ```
+
+**Key fields**:
+- `session_id`: Unique identifier for this Claude Code session
+- `transcript_path`: Full path to session transcript JSON file
+- `tool_use_id`: Unique ID for this specific tool invocation
+
+#### PostToolUse Hook
+
+```json
+{
+  "session_id": "abc123-session-uuid",
+  "transcript_path": "/path/to/.claude/sessions/abc123.json",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "npm test"
+  },
+  "tool_response": {
+    "stdout": "All tests passed",
+    "stderr": "",
+    "exitCode": 0
+  },
+  "tool_use_id": "tool_use_abc123"
+}
+```
+
+**Key fields**:
+- `tool_response`: Contains the actual result of the tool execution
+- For Bash: includes `stdout`, `stderr`, `exitCode`
+- For Write/Edit: includes success/failure status
+
+#### SessionStart Hook (NEW - Critical for Learning Injection)
+
+```json
+{
+  "session_id": "abc123-session-uuid",
+  "transcript_path": "/path/to/.claude/sessions/abc123.json"
+}
+```
+
+**Use this for**: Injecting learnings into context at session start!
+
+#### SessionEnd Hook
+
+```json
+{
+  "session_id": "abc123-session-uuid",
+  "transcript_path": "/path/to/.claude/sessions/abc123.json"
+}
+```
+
+**Use this for**: Self-audit, learning extraction, session summary.
+
+#### Stop Hook
+
+```json
+{
+  "session_id": "abc123-session-uuid",
+  "transcript_path": "/path/to/.claude/sessions/abc123.json",
+  "stop_hook_active": true
+}
+```
+
+**Use this for**: Final cleanup, metrics export.
+
+#### UserPromptSubmit Hook
+
+```json
+{
+  "session_id": "abc123-session-uuid",
+  "transcript_path": "/path/to/.claude/sessions/abc123.json",
+  "prompt": "Help me refactor the auth module"
+}
+```
+
+**Use this for**: Intent detection (quick question vs complex task).
+
+---
+
+### Hook Output: Injecting Context
+
+Hooks can inject additional context into Claude's prompt by outputting JSON with `additionalContext`:
+
+```json
+{
+  "hookSpecificOutput": {
+    "hookEventName": "SessionStart",
+    "additionalContext": "Before starting, here are relevant learnings from past sessions:\n\n1. [HIGH] When refactoring auth, always check JWT expiry logic first.\n2. [MEDIUM] This project uses bcrypt 5.x - don't use deprecated methods."
+  }
+}
+```
+
+**This is how we inject learnings at session start!**
+
+```javascript
+// hooks/session-start.js
+async function main() {
+  const input = await readStdin();
+
+  // Retrieve relevant learnings (done quickly by Haiku, not Opus)
+  const learnings = await retrieveQuickLearnings(input.session_id);
+
+  if (learnings.length > 0) {
+    // Output JSON that injects context
+    console.log(JSON.stringify({
+      hookSpecificOutput: {
+        hookEventName: "SessionStart",
+        additionalContext: formatLearningsForInjection(learnings)
+      }
+    }));
+  }
+}
+```
+
+---
+
+### Hook Exit Codes
+
+| Exit Code | Meaning | Effect |
+|-----------|---------|--------|
+| 0 | Success/Allow | Tool proceeds normally |
+| 1 | Block | Tool is blocked (PreToolUse only) |
+| 2 | Error | Hook failed, but tool proceeds |
+
+**Our strategy**: Always fail open (exit 0 on errors) to avoid blocking work.
+
+---
+
+### What Claude Already Provides (Leverage This!)
+
+From our research, Claude Code already provides:
+
+1. **`session_id`**: Unique per session - use as primary key in Firebase
+2. **`transcript_path`**: Full conversation JSON - can be parsed for learning extraction
+3. **`tool_use_id`**: Track individual tool calls for error correlation
+4. **`prompt`** (UserPromptSubmit): Raw user input for intent detection
+
+**We don't need to generate these ourselves!**
 
 ### settings.json Hook Configuration
 
@@ -924,6 +1058,245 @@ main().catch(console.error);
 
 ---
 
+## Structured Output Strategy
+
+Based on your question about extracting metadata from Claude responses and subagent outputs.
+
+### Option 1: YAML Metadata in Claude Instructions (NOT Recommended)
+
+We *could* instruct Claude to output structured YAML at the start of each response:
+
+```yaml
+---
+task_type: complex
+short_title: auth-refactor
+files_affected: [src/auth.ts, src/middleware.ts]
+estimated_steps: 5
+---
+```
+
+**Problems**:
+- Pollutes every response with boilerplate
+- Relies on Claude following instructions (not guaranteed)
+- Wastes tokens on metadata in every turn
+- Parsing can fail if Claude deviates
+
+### Option 2: Leverage Hook Data (RECOMMENDED)
+
+Claude Code already provides structured data via hooks. We should use that instead:
+
+```javascript
+// UserPromptSubmit hook - Extract task metadata
+async function handlePromptSubmit(input) {
+  const { session_id, prompt } = input;
+
+  // Use fast model (Haiku/Gemini) to classify intent
+  const classification = await classifyIntent(prompt);
+
+  // Store in Firebase
+  await db.collection('sessions').doc(session_id).set({
+    prompt,
+    taskType: classification.type,    // 'quick' | 'complex' | 'focused'
+    shortTitle: classification.title, // AI-generated short title
+    estimatedComplexity: classification.complexity,
+    startedAt: new Date()
+  }, { merge: true });
+
+  // Inject context if complex task
+  if (classification.type === 'complex') {
+    return {
+      hookSpecificOutput: {
+        hookEventName: "UserPromptSubmit",
+        additionalContext: `This appears to be a complex task. A plan will be created.`
+      }
+    };
+  }
+}
+```
+
+**This is better because**:
+- No pollution of Claude's responses
+- Uses existing hook infrastructure
+- Fast LLM does the classification (cheap, reliable)
+- Data goes directly to Firebase
+
+---
+
+### Subagent Structured Output
+
+The Task tool (for spawning subagents) supports structured JSON output via the `outputFormat` parameter:
+
+```javascript
+// Orchestrator spawns a subagent with structured output requirement
+const result = await task({
+  prompt: `Analyze the auth module and return findings.
+
+  Return your response as JSON:
+  {
+    "summary": "brief description",
+    "issues": [{"severity": "high|medium|low", "description": "..."}],
+    "recommendations": ["..."],
+    "filesAnalyzed": ["..."]
+  }`,
+  outputFormat: 'json',
+  subagent_type: 'Explore'
+});
+
+// result.output is now parsed JSON
+const findings = result.output;
+```
+
+**For our use case**: Subagents return structured learning data:
+
+```typescript
+interface SubagentLearningOutput {
+  verdict: 'success' | 'partial' | 'failed';
+  learnings: {
+    lesson: string;
+    context: string;
+    confidence: number;
+    appliesTo: string[];
+  }[];
+  errorsFound: {
+    type: string;
+    description: string;
+    resolution: string;
+  }[];
+  recommendedNextSteps: string[];
+}
+```
+
+---
+
+### Orchestrator's Role: Evaluate and Log
+
+The orchestrator evaluates subagent responses before logging to Firebase. This prevents garbage learnings.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    ORCHESTRATOR FLOW                              │
+│                                                                   │
+│  ┌────────────────┐                                              │
+│  │  Task spawns   │                                              │
+│  │  Subagent      │──────────────────────────────────────┐      │
+│  └────────────────┘                                       │      │
+│                                                            ▼      │
+│                                             ┌────────────────────┐│
+│                                             │  Subagent runs     ││
+│                                             │  (Opus for audit)  ││
+│                                             └─────────┬──────────┘│
+│                                                       │           │
+│                                                       ▼           │
+│  ┌────────────────────────────────────────────────────────────┐  │
+│  │                 ORCHESTRATOR EVALUATION                     │  │
+│  │                                                              │  │
+│  │  1. Parse structured output                                 │  │
+│  │  2. Validate schema (is it complete?)                       │  │
+│  │  3. Quality check learnings:                                │  │
+│  │     - Is the lesson specific enough?                        │  │
+│  │     - Is confidence justified by evidence?                  │  │
+│  │     - Does it duplicate existing learnings?                 │  │
+│  │  4. Decide: store, merge, or discard                       │  │
+│  │  5. Log to Firebase with provenance                        │  │
+│  └────────────────────────────────────────────────────────────┘  │
+│                            │                                      │
+│                            ▼                                      │
+│  ┌────────────────────────────────────────────────────────────┐  │
+│  │                    FIREBASE WRITE                           │  │
+│  │                                                              │  │
+│  │  learnings/{id}: {                                          │  │
+│  │    lesson: "...",                                           │  │
+│  │    sourceSubagent: "opus-audit-abc123",                     │  │
+│  │    sourceSession: "session_xyz",                            │  │
+│  │    evaluatedBy: "orchestrator",                             │  │
+│  │    qualityScore: 0.85,                                      │  │
+│  │    ...                                                      │  │
+│  │  }                                                          │  │
+│  └────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Quality Checks (Prevent Learning Pollution)
+
+```javascript
+// hooks/lib/quality.js
+
+function evaluateLearning(learning, existingLearnings) {
+  const checks = {
+    // Is it specific enough?
+    specificity: learning.lesson.length > 20 &&
+                 !learning.lesson.includes('always') &&
+                 !learning.lesson.includes('never'),
+
+    // Is confidence backed by evidence?
+    evidenceBacked: learning.confidence <= 0.9 ||
+                    (learning.errorFound && learning.resolution),
+
+    // Is it novel?
+    novelty: !existingLearnings.some(existing =>
+      cosineSimilarity(existing.embedding, learning.embedding) > 0.92
+    ),
+
+    // Is context clear?
+    contextual: learning.appliesTo.length > 0 &&
+                learning.context.length > 10
+  };
+
+  const score = Object.values(checks).filter(Boolean).length / 4;
+
+  return {
+    passes: score >= 0.75,
+    score,
+    checks,
+    recommendation: score < 0.5 ? 'discard' :
+                    score < 0.75 ? 'review' : 'store'
+  };
+}
+```
+
+### Updated Hook Configuration
+
+```json
+{
+  "hooks": {
+    "SessionStart": [{
+      "hooks": [{
+        "type": "command",
+        "command": "node .claude/hooks/session-start.js"
+      }]
+    }],
+    "UserPromptSubmit": [{
+      "hooks": [{
+        "type": "command",
+        "command": "node .claude/hooks/prompt-submit.js"
+      }]
+    }],
+    "PreToolUse": [{
+      "matcher": "Bash",
+      "hooks": [{
+        "type": "command",
+        "command": "node .claude/hooks/pre-bash.js"
+      }]
+    }],
+    "PostToolUse": [{
+      "matcher": "Bash|Write|Edit",
+      "hooks": [{
+        "type": "command",
+        "command": "node .claude/hooks/post-tool.js"
+      }]
+    }],
+    "SessionEnd": [{
+      "hooks": [{
+        "type": "command",
+        "command": "node .claude/hooks/session-end.js"
+      }]
+    }]
+  }
+}
+```
+
+---
+
 ## Dashboard Design (Samsung Fold 4)
 
 ### Device Specifications
@@ -1050,13 +1423,47 @@ function useDashboard(userId: string) {
 
 ## Next Steps
 
+### Completed
+
 1. ✅ Database: Firebase with native vector search
 2. ✅ Embeddings: Xenova local (384 dims)
 3. ✅ Models: Opus (Claude Max), Gemini Flash (security)
-4. 🔲 Create hooks/ directory with Node.js scripts
-5. 🔲 Set up Firebase project and indexes
-6. 🔲 Create dashboard Next.js app
-7. 🔲 Define security check prompts
-8. 🔲 Design learning retrieval algorithm (MMR)
+4. ✅ Hook JSON schemas documented (all 6 hook types)
+5. ✅ Context injection via `additionalContext` documented
+6. ✅ Structured output strategy decided (use hooks, not YAML in responses)
+7. ✅ Orchestrator evaluation role designed (quality checks)
+8. ✅ Subagent structured output pattern documented
 
-What should we tackle next?
+### Remaining
+
+9. 🔲 Create hooks/ directory with Node.js scripts
+10. 🔲 Set up Firebase project and indexes
+11. 🔲 Create dashboard Next.js app
+12. 🔲 Define security check prompts for Gemini Flash
+13. 🔲 Design learning retrieval algorithm (MMR)
+14. 🔲 Implement quality check functions
+15. 🔲 Design transcript parsing for learning extraction
+
+---
+
+## Key Decisions Summary
+
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| Database | Firebase Firestore | Native vector search, real-time sync, works everywhere |
+| Embeddings | Xenova (384 dims) | Local, free, fast |
+| Security Check | Gemini Flash | Fast, cheap, good at simple judgments |
+| Learning Retrieval | Opus subagent | Deep reasoning for relevance |
+| Self-Audit | Opus subagent | Quality learning extraction |
+| Metadata Extraction | Hooks (not YAML) | No response pollution, reliable |
+| Subagent Output | JSON via Task tool | Structured, parseable |
+| Learning Quality | Orchestrator eval | Prevents pollution, maintains quality |
+
+---
+
+## Open Questions
+
+1. **How aggressive should quality filtering be?** Risk: Too strict = lose learnings, too loose = pollution
+2. **Should we use UserPromptSubmit or SessionStart for learning injection?** Trade-off: early vs after intent is known
+3. **How to handle multi-turn learning?** A single session may have multiple distinct tasks
+4. **Transcript parsing depth?** How much of the conversation to analyze for learnings
