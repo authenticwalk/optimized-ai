@@ -24,10 +24,105 @@
 - ✅ Cloud Functions for scheduled tasks (nightly learning)
 
 **Cons**:
-- ⚠️ No native vector search (need extension or Vertex AI)
+- ~~⚠️ No native vector search~~ **RESOLVED: Firebase now has native vector search!**
 - ⚠️ Query limitations (no full-text search, limited joins)
 - ⚠️ Costs scale with reads (embedding lookups = many reads)
 - ⚠️ Vendor lock-in to Google
+
+---
+
+## Firebase Vector Search (Native Support)
+
+**Source**: [Firebase Vector Search Docs](https://firebase.google.com/docs/firestore/vector-search)
+
+Firebase Firestore now supports native K-nearest neighbor (KNN) vector search. This eliminates the need for a separate vector database.
+
+### Storing Embeddings
+
+```javascript
+import { FieldValue } from 'firebase-admin/firestore';
+
+// Store a learning with its embedding
+const learningsRef = db.collection('learnings');
+await learningsRef.add({
+  lesson: "When refactoring auth, check JWT expiry logic first",
+  context: "auth refactor",
+  keywords: ["auth", "jwt", "refactor"],
+  confidence: 0.9,
+  createdAt: FieldValue.serverTimestamp(),
+
+  // Vector embedding (384 dimensions from Xenova)
+  embedding: FieldValue.vector([0.12, -0.34, 0.56, ...])  // 384 floats
+});
+```
+
+### Creating Vector Index
+
+Before querying, create an index via gcloud CLI:
+
+```bash
+gcloud firestore indexes composite create \
+  --collection-group=learnings \
+  --field-config field-path=embedding,vector-config='{"dimension":"384", "flat": "{}"}' \
+  --database="(default)"
+```
+
+**Note**: Dimension must match your embedding model (Xenova = 384).
+
+### Querying with find_nearest
+
+```javascript
+// Find similar learnings
+const queryEmbedding = await xenova.embed("auth refactor task");
+
+const similarLearnings = await db.collection('learnings')
+  .findNearest({
+    vectorField: 'embedding',
+    queryVector: queryEmbedding,
+    limit: 5,
+    distanceMeasure: 'COSINE'  // or 'EUCLIDEAN', 'DOT_PRODUCT'
+  });
+
+// Can combine with filters
+const filteredResults = await db.collection('learnings')
+  .where('confidence', '>=', 0.7)
+  .findNearest({
+    vectorField: 'embedding',
+    queryVector: queryEmbedding,
+    limit: 5,
+    distanceMeasure: 'COSINE'
+  });
+```
+
+### Distance Measures
+
+| Measure | Best For | Notes |
+|---------|----------|-------|
+| COSINE | Most embeddings | Normalized, recommended default |
+| EUCLIDEAN | Absolute distance | Good for spatial data |
+| DOT_PRODUCT | Already normalized | Slightly faster if pre-normalized |
+
+### Embedding Strategy
+
+We'll use **Xenova/all-MiniLM-L6-v2** (384 dimensions):
+- Runs locally (no API costs)
+- Fast (~50ms per embedding)
+- Good quality for semantic similarity
+
+```javascript
+// hooks/lib/embeddings.js
+import { pipeline } from '@xenova/transformers';
+
+let embedder = null;
+
+export async function getEmbedding(text) {
+  if (!embedder) {
+    embedder = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
+  }
+
+  const output = await embedder(text, { pooling: 'mean', normalize: true });
+  return Array.from(output.data);  // 384-dim float array
+}
 
 ### Option 2: Supabase (PostgreSQL)
 
@@ -498,44 +593,470 @@ interface PlanStep {
 
 ---
 
-## Open Questions
+## Decisions Made
 
-1. **Embedding Storage**: Firebase doesn't have native vector search. Options:
-   - Store embeddings as arrays, search in Cloud Function (works for <10k learnings)
-   - Use Vertex AI Vector Search (Google, adds cost)
-   - Use Pinecone/Qdrant separately (more complexity)
+1. ~~**Embedding Storage**~~: ✅ **SOLVED** - Firebase now has native vector search with `findNearest()`. Using Xenova (384 dims) for local embeddings.
 
-   **Recommendation**: Start with array storage + Cloud Function. Migrate when scale demands.
+2. **Subagent Model Selection** ✅ **DECIDED**:
+   - Learning Retriever: **Opus** (included in Claude Max)
+   - Security Check: **Gemini Flash** (fast, cheap, simple task)
+   - Self-Audit: **Opus** (included in Claude Max)
+   - Step Execution: **Sonnet** (balanced cost/quality)
 
-2. **Subagent Model Selection**:
-   - Learning Retriever: Opus (needs deep thinking about applicability)
-   - Security Check: Gemini Flash (fast, cheap, simple task)
-   - Self-Audit: Opus (needs reflection capability)
-   - Step Execution: Sonnet (balanced cost/quality)
+3. **Plan Document Sync**: Real-time listeners for dashboard, polling (30s) for agents.
 
-   **Question**: What's your budget tolerance? Opus is expensive.
+4. **Embeddings**: **Xenova/all-MiniLM-L6-v2** - runs locally, 384 dimensions, no API cost.
 
-3. **Plan Document Sync**:
-   - How often should subagents poll the plan document?
-   - Should we use Firebase real-time listeners or polling?
+---
 
-   **Recommendation**: Real-time listeners for dashboard, polling (30s) for agents.
+## Hook Architecture (Node.js)
 
-4. **Error Capture**:
-   - How do we detect when Claude encounters an error during work?
-   - Options: PostToolUse hook checks output, explicit error markers, AI detection
+Based on patterns from claude-flow and agentic-flow analysis.
 
-   **Question**: Do you have access to tool outputs in hooks?
+### How Claude Code Hooks Work
+
+Claude Code hooks receive JSON on stdin with tool information:
+
+```json
+// PreToolUse receives:
+{
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "rm -rf node_modules"
+  }
+}
+
+// PostToolUse receives:
+{
+  "tool_name": "Bash",
+  "tool_input": { "command": "..." },
+  "tool_output": "..."  // Result of the command
+}
+```
+
+### settings.json Hook Configuration
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [{
+          "type": "command",
+          "command": "node .claude/hooks/pre-bash.js"
+        }]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash|Write|Edit",
+        "hooks": [{
+          "type": "command",
+          "command": "node .claude/hooks/post-tool.js"
+        }]
+      }
+    ],
+    "Stop": [{
+      "hooks": [{
+        "type": "command",
+        "command": "node .claude/hooks/session-end.js"
+      }]
+    }]
+  }
+}
+```
+
+### Directory Structure
+
+```
+.claude/
+├── settings.json           # Hook configuration
+├── hooks/
+│   ├── pre-bash.js        # Security check before bash commands
+│   ├── post-tool.js       # Log tool usage, detect errors
+│   ├── session-end.js     # Self-audit, store learnings
+│   └── lib/
+│       ├── firebase.js    # Firebase client
+│       ├── embeddings.js  # Xenova embedding
+│       ├── security.js    # Gemini Flash security check
+│       └── learnings.js   # Learning retrieval/storage
+└── CLAUDE.md              # Project instructions
+```
+
+### Hook Scripts
+
+#### pre-bash.js (Security Check)
+
+```javascript
+#!/usr/bin/env node
+/**
+ * Pre-Bash Hook: Security check before command execution
+ *
+ * Flow:
+ * 1. Parse command from stdin
+ * 2. Check Firebase cache for previous approval
+ * 3. If miss, call Gemini Flash for assessment
+ * 4. Cache result
+ * 5. Exit 0 (allow) or exit 1 (block)
+ */
+
+import { createHash } from 'crypto';
+import { getFirestore } from './lib/firebase.js';
+import { checkCommandSafety } from './lib/security.js';
+
+async function main() {
+  // Read stdin
+  const chunks = [];
+  for await (const chunk of process.stdin) chunks.push(chunk);
+  const input = JSON.parse(Buffer.concat(chunks).toString());
+
+  const command = input.tool_input?.command;
+  if (!command) process.exit(0);  // No command, allow
+
+  // Normalize and hash command
+  const normalized = normalizeCommand(command);
+  const hash = createHash('sha256').update(normalized).digest('hex');
+
+  // Check cache
+  const db = getFirestore();
+  const cacheRef = db.collection('command_cache').doc(hash);
+  const cached = await cacheRef.get();
+
+  if (cached.exists) {
+    const data = cached.data();
+    await cacheRef.update({ hitCount: data.hitCount + 1 });
+
+    if (data.safe) {
+      console.log(`[CACHED] Command approved: ${command.substring(0, 50)}...`);
+      process.exit(0);
+    } else {
+      console.log(`[BLOCKED] ${data.reason}`);
+      process.exit(1);
+    }
+  }
+
+  // Cache miss - call Gemini Flash
+  const result = await checkCommandSafety(command, process.cwd());
+
+  // Store in cache
+  await cacheRef.set({
+    hash,
+    command,
+    pattern: normalized,
+    safe: result.safe,
+    reason: result.reason,
+    checkedAt: new Date(),
+    checkedBy: 'gemini-flash',
+    hitCount: 0
+  });
+
+  if (result.safe) {
+    console.log(`[APPROVED] ${result.reason}`);
+    process.exit(0);
+  } else {
+    console.log(`[BLOCKED] ${result.reason}`);
+    process.exit(1);
+  }
+}
+
+function normalizeCommand(cmd) {
+  // Replace specific paths with patterns
+  return cmd
+    .replace(/\/Users\/[^\/]+/g, '/Users/<user>')
+    .replace(/\/home\/[^\/]+/g, '/home/<user>')
+    .replace(/[0-9a-f]{8,}/gi, '<hash>')  // Git hashes, etc.
+    .trim();
+}
+
+main().catch(err => {
+  console.error('[ERROR]', err.message);
+  process.exit(0);  // On error, allow (fail open)
+});
+```
+
+#### post-tool.js (Logging & Error Detection)
+
+```javascript
+#!/usr/bin/env node
+/**
+ * Post-Tool Hook: Log tool usage, detect errors
+ *
+ * Updates the current session document with:
+ * - Tools used
+ * - Files modified
+ * - Errors detected
+ */
+
+import { getFirestore, FieldValue } from './lib/firebase.js';
+
+async function main() {
+  const chunks = [];
+  for await (const chunk of process.stdin) chunks.push(chunk);
+  const input = JSON.parse(Buffer.concat(chunks).toString());
+
+  const db = getFirestore();
+  const sessionId = process.env.CLAUDE_SESSION_ID || 'unknown';
+  const sessionRef = db.collection('sessions').doc(sessionId);
+
+  const toolName = input.tool_name;
+  const toolOutput = input.tool_output || '';
+
+  // Detect errors in output
+  const errorPatterns = [
+    /error:/i,
+    /failed/i,
+    /exception/i,
+    /traceback/i,
+    /cannot find/i,
+    /permission denied/i
+  ];
+
+  const hasError = errorPatterns.some(p => p.test(toolOutput));
+
+  // Update session
+  const update = {
+    lastActivity: FieldValue.serverTimestamp(),
+    [`toolsUsed.${toolName}`]: FieldValue.increment(1)
+  };
+
+  if (hasError) {
+    update.errors = FieldValue.arrayUnion({
+      tool: toolName,
+      output: toolOutput.substring(0, 500),
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  // Track file modifications
+  if (toolName === 'Write' || toolName === 'Edit') {
+    const filePath = input.tool_input?.file_path || input.tool_input?.path;
+    if (filePath) {
+      update.filesModified = FieldValue.arrayUnion(filePath);
+    }
+  }
+
+  await sessionRef.set(update, { merge: true });
+}
+
+main().catch(console.error);
+```
+
+#### session-end.js (Self-Audit)
+
+```javascript
+#!/usr/bin/env node
+/**
+ * Session End Hook: Self-audit and learning extraction
+ *
+ * Spawns Opus subagent to:
+ * 1. Review what happened in the session
+ * 2. Identify learnings from errors
+ * 3. Store learnings with embeddings
+ */
+
+import { getFirestore, FieldValue } from './lib/firebase.js';
+import { getEmbedding } from './lib/embeddings.js';
+
+async function main() {
+  const db = getFirestore();
+  const sessionId = process.env.CLAUDE_SESSION_ID || 'unknown';
+
+  // Mark session as completed
+  const sessionRef = db.collection('sessions').doc(sessionId);
+  const session = await sessionRef.get();
+
+  if (!session.exists) {
+    console.log('[SESSION-END] No session to audit');
+    return;
+  }
+
+  const data = session.data();
+
+  // Update session status
+  await sessionRef.update({
+    status: 'completed',
+    endTime: FieldValue.serverTimestamp()
+  });
+
+  // If there were errors, extract learnings
+  if (data.errors?.length > 0) {
+    console.log(`[SESSION-END] Found ${data.errors.length} errors, extracting learnings...`);
+
+    // This would trigger an Opus subagent in the real implementation
+    // For now, we'll create a learning request document
+    await db.collection('learning_requests').add({
+      sessionId,
+      errors: data.errors,
+      filesModified: data.filesModified || [],
+      taskDescription: data.taskDescription || 'Unknown',
+      status: 'pending',
+      createdAt: FieldValue.serverTimestamp()
+    });
+
+    console.log('[SESSION-END] Learning request created for Opus review');
+  }
+
+  // Update dashboard with session summary
+  await db.collection('dashboard').doc('current').set({
+    lastSession: {
+      id: sessionId,
+      status: 'completed',
+      errorsCount: data.errors?.length || 0,
+      filesModified: data.filesModified?.length || 0,
+      endTime: new Date().toISOString()
+    }
+  }, { merge: true });
+
+  console.log('[SESSION-END] Audit complete');
+}
+
+main().catch(console.error);
+```
+
+### Patterns Learned from claude-flow/agentic-flow
+
+1. **JSON parsing from stdin**: Use `cat | jq` or Node.js stdin reading
+2. **Matcher patterns**: `"Bash"`, `"Write|Edit|MultiEdit"` for targeting specific tools
+3. **Exit codes**: `exit 0` allows, `exit 1` blocks (for PreToolUse)
+4. **Environment variables**: Pass context via env (session ID, project path)
+5. **Fail open**: On errors, allow command to prevent blocking work
+
+---
+
+## Dashboard Design (Samsung Fold 4)
+
+### Device Specifications
+
+- **Folded (Cover)**: 904 x 2316 px @ 120Hz (23.1:9 aspect)
+- **Unfolded (Main)**: 1812 x 2176 px @ 120Hz (almost square)
+- **Key insight**: Design for BOTH modes
+
+### Layout Strategy
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    FOLDED (Cover Screen)                         │
+│                    Single-column, glanceable                     │
+│                                                                  │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │  🔵 optimized-ai          2 tasks running                  │ │
+│  │  └─ Refactoring auth      ████████░░ 80%                   │ │
+│  │  └─ Writing tests         ██░░░░░░░░ 20%                   │ │
+│  ├────────────────────────────────────────────────────────────┤ │
+│  │  🟢 client-project        Idle                             │ │
+│  │  └─ Last: Fixed login bug (2h ago)                         │ │
+│  ├────────────────────────────────────────────────────────────┤ │
+│  │  🟡 data-pipeline         1 task blocked                   │ │
+│  │  └─ Waiting: API key needed                                │ │
+│  └────────────────────────────────────────────────────────────┘ │
+│                                                                  │
+│  [Quick Stats: 5 sessions today | 12 learnings | 98% safe]      │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│                    UNFOLDED (Main Screen)                        │
+│                    Two-column, detailed                          │
+│                                                                  │
+│  ┌──────────────────────┬──────────────────────────────────────┐│
+│  │   PROJECTS           │   SELECTED PROJECT DETAIL             ││
+│  │                      │                                        ││
+│  │  🔵 optimized-ai    │   ## optimized-ai                      ││
+│  │     2 running        │                                        ││
+│  │                      │   Current Tasks:                       ││
+│  │  🟢 client-project  │   ┌──────────────────────────────────┐ ││
+│  │     idle             │   │ 1. Refactoring auth             │ ││
+│  │                      │   │    Step 3/5: Update middleware  │ ││
+│  │  🟡 data-pipeline   │   │    Agent: claude-opus            │ ││
+│  │     blocked          │   │    ████████░░ 80%                │ ││
+│  │                      │   └──────────────────────────────────┘ ││
+│  │                      │   ┌──────────────────────────────────┐ ││
+│  │                      │   │ 2. Writing tests                 │ ││
+│  │                      │   │    Step 1/4: Setup test env      │ ││
+│  │                      │   │    Agent: claude-sonnet          │ ││
+│  │                      │   │    ██░░░░░░░░ 20%                │ ││
+│  │                      │   └──────────────────────────────────┘ ││
+│  │                      │                                        ││
+│  │                      │   Recent Learnings:                    ││
+│  │                      │   • JWT refresh needs sliding window  ││
+│  │                      │   • Test mocks must match prod types  ││
+│  └──────────────────────┴──────────────────────────────────────┘│
+│                                                                  │
+│  [Today: 5 sessions | 12 learnings | 47 commands | 2 errors]    │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Firebase Real-time Structure for Dashboard
+
+```typescript
+// /dashboard/{userId}
+interface DashboardState {
+  projects: {
+    [projectId: string]: {
+      name: string;
+      status: 'active' | 'idle' | 'blocked';
+      currentTasks: {
+        id: string;
+        description: string;
+        progress: number;  // 0-100
+        currentStep: number;
+        totalSteps: number;
+        agent: string;
+      }[];
+      lastActivity: Timestamp;
+      errorCount: number;
+    }
+  };
+  stats: {
+    todaySessions: number;
+    todayLearnings: number;
+    todayCommands: number;
+    todayErrors: number;
+    safetyRate: number;  // % of commands approved
+  };
+}
+```
+
+### Real-time Listener (React/Next.js)
+
+```typescript
+import { onSnapshot, doc } from 'firebase/firestore';
+import { useEffect, useState } from 'react';
+
+function useDashboard(userId: string) {
+  const [dashboard, setDashboard] = useState<DashboardState | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = onSnapshot(
+      doc(db, 'dashboard', userId),
+      (doc) => setDashboard(doc.data() as DashboardState)
+    );
+    return unsubscribe;
+  }, [userId]);
+
+  return dashboard;
+}
+```
+
+### Tech Stack for Dashboard
+
+- **Framework**: Next.js 14 (App Router)
+- **Hosting**: Vercel (free tier)
+- **Styling**: Tailwind CSS (responsive utilities)
+- **State**: Firebase onSnapshot (real-time)
+- **PWA**: Add to home screen on Fold 4
 
 ---
 
 ## Next Steps
 
-1. Finalize database choice (Firebase confirmed?)
-2. Design the hook architecture in detail
-3. Define the exact prompts for each subagent role
-4. Design the dashboard UI/data flows
-5. Create the learning retrieval algorithm
-6. Define the security check prompt and caching strategy
+1. ✅ Database: Firebase with native vector search
+2. ✅ Embeddings: Xenova local (384 dims)
+3. ✅ Models: Opus (Claude Max), Gemini Flash (security)
+4. 🔲 Create hooks/ directory with Node.js scripts
+5. 🔲 Set up Firebase project and indexes
+6. 🔲 Create dashboard Next.js app
+7. 🔲 Define security check prompts
+8. 🔲 Design learning retrieval algorithm (MMR)
 
-What aspect would you like to dig into first?
+What should we tackle next?
