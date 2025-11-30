@@ -52,12 +52,15 @@ Thumbs.db
 *.db-shm
 *.db-wal
 
+# Cloned external repos (for research reference only)
+.ai-knowledge/research/*-repo/
+
 # Keep these tracked (explicitly listed for clarity):
 # - .plan/initial-design/ (initial design docs)
 # - .ai-knowledge/ (complete folder - plans, research, knowledge base)
 #   - .ai-knowledge/knowledge.db (SQLite database)
 #   - .ai-knowledge/plans/ (all plans and subtasks)
-#   - .ai-knowledge/research/ (all research)
+#   - .ai-knowledge/research/ (all research - except cloned repos)
 # - experiments/scenarios/ (test scenarios)
 # - experiments/results/*/definition.json (experiment definitions)
 # - experiments/results/*/analysis.json (analysis results)
