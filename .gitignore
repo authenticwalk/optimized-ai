@@ -62,3 +62,4 @@ Thumbs.db
 # - experiments/results/*/definition.json (experiment definitions)
 # - experiments/results/*/analysis.json (analysis results)
 # - experiments/results/*/report.md (reports)
+ruvector/
